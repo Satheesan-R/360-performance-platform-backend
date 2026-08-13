@@ -1,0 +1,33 @@
+const express = require('express');
+const cors = require('cors');
+const { env } = require('./config/env');
+const authRoutes = require('./modules/auth/auth.routes');
+const employeeRoutes = require('./modules/employees/employee.routes');
+
+const app = express();
+
+app.use(cors(
+  {  origin: env.frontendUrl, credentials: true }
+  ));
+app.use(express.json({ limit: '20kb'}
+   ));
+
+app.use('/api/auth', authRoutes);
+app.use('/api/employees', employeeRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: 'Route not found' });
+});
+
+app.use((error, req, res, next) => {
+  if (!error.statusCode || error.statusCode >= 500) console.error(error);
+  if (error.code === 11000) {
+    return res.status(409).json({ success: false, message: 'A record with that value already exists' });
+  }
+  res.status(error.statusCode || 500).json({
+    success: false,
+    message: error.statusCode ? error.message : 'Internal server error',
+  });
+});
+
+module.exports = app;
