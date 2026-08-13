@@ -1,8 +1,8 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const { env } = require('./config/env');
-const authRoutes = require('./modules/auth/auth.routes');
-const employeeRoutes = require('./modules/employees/employee.routes');
+const authRoutes = require('./modules/auth/routes/authroutes');
+const employeeRoutes = require('./modules/employees/routes/employeeroutes');
 
 const app = express();
 
