@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 
 const employeeSchema = new mongoose.Schema(
   {
@@ -31,7 +31,15 @@ const employeeSchema = new mongoose.Schema(
     yearsOfExperience: { type: String, trim: true },
     jobTitle: { type: String, trim: true },
     department: { type: String, trim: true },
+    gender: { type: String, trim: true },
+    dateOfBirth: Date,
     JoiningDate: Date,
+    employmentType: {
+      type: String,
+      enum: ['full-time', 'probation', 'intern'],
+      default: 'full-time',
+    },
+    officeLocation: { type: String, trim: true },
     probationPeriod: { type: String, trim: true },
     manager: { type: String, trim: true },
     user: {
