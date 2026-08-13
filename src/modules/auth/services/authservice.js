@@ -37,7 +37,7 @@ async function sendActivationOtp(token) {
 
   const otp = crypto.randomInt(100000, 1000000).toString();
   activation.otpHash = hash(otp);
-  activation.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  activation.otpExpiresAt = new Date(Date.now() + 2 * 60 * 1000);
   activation.otpAttempts = 0;
   await activation.save();
   await sendOtpEmail(user.email, otp);
