@@ -7,9 +7,13 @@ const app = require('../src/app');
 const Department = require('../src/modules/organization/models/department');
 const Employee = require('../src/modules/auth/models/employee');
 const Organization = require('../src/modules/organization/models/organization');
+const Team = require('../src/modules/organization/models/team');
+const EmploymentType = require('../src/modules/organization/models/employmenttype');
+const RoleDefinition = require('../src/modules/organization/models/roledefinition');
 const service = require('../src/modules/organization/services/departmentservice');
 const organizationService = require('../src/modules/organization/services/organizationservice');
 const { fields, pagination } = require('../src/modules/organization/services/validation');
+const { linkDepartments } = require('../scripts/link-departments');
 
 test('rejects invalid input and normalizes department codes', () => {
   assert.deepEqual(fields({ name: ' Engineering ', code: ' eng ' }, ['name', 'code'], ['name', 'code']), { name: 'Engineering', code: 'ENG' });
@@ -27,6 +31,54 @@ test('rejects invalid input and normalizes department codes', () => {
 test('requires an existing employee when selecting a department head', async (t) => {
   t.mock.method(Employee, 'exists', async () => null);
   await assert.rejects(service.createDepartment({ name: 'Engineering', code: 'ENG', headEmployeeId: '507f1f77bcf86cd799439011' }), { statusCode: 404 });
+});
+
+test('department creation uses the single company and rejects client organization IDs', async (t) => {
+  const lookup = t.mock.method(Organization, 'findOne', async () => null);
+  await assert.rejects(service.createDepartment({ name: 'Engineering', code: 'ENG' }), { statusCode: 409 });
+  lookup.mock.mockImplementation(async () => ({ _id: '507f1f77bcf86cd799439013' }));
+  t.mock.method(Department, 'create', async (data) => ({ populate: async () => data }));
+  const result = await service.createDepartment({ name: 'Engineering', code: 'ENG' });
+  assert.equal(result.organizationId, '507f1f77bcf86cd799439013');
+  await assert.rejects(service.createDepartment({ name: 'Engineering', code: 'ENG', organizationId: '507f1f77bcf86cd799439014' }), { statusCode: 400 });
+});
+
+test('organization models require relationships and validate role permissions', async () => {
+  const organizationId = '507f1f77bcf86cd799439013';
+  await assert.rejects(new Department({ name: 'Engineering', code: 'ENG' }).validate(), (error) => Boolean(error.errors.organizationId));
+  await assert.rejects(new Team({ organizationId, name: 'Frontend Team', code: 'eng-fe' }).validate(), (error) => Boolean(error.errors.departmentId));
+  const team = new Team({ organizationId, name: 'Frontend Team', code: 'eng-fe', departmentId: '507f1f77bcf86cd799439011' });
+  await team.validate();
+  assert.equal(team.code, 'ENG-FE');
+  const employmentType = new EmploymentType({ organizationId, name: 'Intern', code: 'intern' });
+  await employmentType.validate();
+  assert.equal(employmentType.isActive, true);
+  assert.equal(EmploymentType.collection.collectionName, 'employmentTypes');
+  assert.equal(RoleDefinition.collection.collectionName, 'roleDefinitions');
+  const role = new RoleDefinition({ organizationId, code: 'manager', label: 'HOD', permissions: ['team.read', 'reviews.assigned.read', 'reviews.assigned.submit'], isSystemRole: true });
+  await role.validate();
+  assert.equal(role.code, 'MANAGER');
+  role.permissions = ['team.read', 'team.read'];
+  await assert.rejects(role.validate(), (error) => Boolean(error.errors.permissions));
+  role.permissions = ['invalid permission'];
+  await assert.rejects(role.validate());
+});
+
+test('department migration previews by default and fills only missing organization links', async (t) => {
+  const organizationId = '507f1f77bcf86cd799439013';
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(Organization, 'findOne', () => ({ lean: async () => ({ _id: organizationId, name: 'Company' }) }));
+  t.mock.method(Department, 'countDocuments', async () => 2);
+  const update = t.mock.method(Department, 'updateMany', async (filter, data, options) => {
+    assert.deepEqual(filter, { organizationId: null });
+    assert.deepEqual(data, { $set: { organizationId } });
+    assert.deepEqual(options, { overwriteImmutable: true });
+    return { modifiedCount: 2 };
+  });
+  await linkDepartments();
+  assert.equal(update.mock.callCount(), 0);
+  await linkDepartments(true);
+  assert.equal(update.mock.callCount(), 1);
 });
 
 test('rejects missing or inactive departments for new assignments', async (t) => {
@@ -88,8 +140,9 @@ test('requires company name and code on initial organization setup', async (t) =
 test('organization summary uses stored counts and marks unavailable modules', async (t) => {
   t.mock.method(Employee, 'countDocuments', async () => 25);
   t.mock.method(Department, 'countDocuments', async (filter) => filter.status ? 2 : 3);
+  t.mock.method(Team, 'countDocuments', async () => 4);
   assert.deepEqual(await organizationService.getSummary(), {
-    totalEmployees: 25, departments: 3, activeDepartments: 2, teams: null, activeReviewFrameworks: null,
+    totalEmployees: 25, departments: 3, activeDepartments: 2, teams: 4, activeReviewFrameworks: null,
   });
 });
 
@@ -119,6 +172,7 @@ test('organization APIs enforce HR/admin access and return validation and confli
   }
   assert.equal((await request('/api/departments', 'hr', 'POST', { name: '' })).status, 400);
   assert.equal((await request('/api/departments/bad', 'hr', 'PATCH', { name: 'Finance' })).status, 400);
+  t.mock.method(Organization, 'findOne', async () => ({ _id: '507f1f77bcf86cd799439013' }));
   t.mock.method(Department, 'create', async () => { throw Object.assign(new Error('Duplicate'), { code: 11000 }); });
   assert.equal((await request('/api/departments', 'admin', 'POST', { name: 'Engineering', code: 'ENG' })).status, 409);
 });

@@ -1,4 +1,5 @@
 const Department = require('../models/department');
+const Organization = require('../models/organization');
 const Employee = require('../../auth/models/employee');
 const { fail, objectId, fields, pagination } = require('./validation');
 
@@ -13,7 +14,9 @@ async function validateHead(data) {
 async function createDepartment(body) {
   const data = fields(body, allowed, ['name', 'code']);
   await validateHead(data);
-  const department = await Department.create(data);
+  const organization = await Organization.findOne({ singletonKey: 'company' });
+  if (!organization) fail('Set up the organization before creating departments', 409);
+  const department = await Department.create({ ...data, organizationId: organization._id });
   return department.populate('headEmployeeId', 'employeeNumber firstName lastName workEmail');
 }
 

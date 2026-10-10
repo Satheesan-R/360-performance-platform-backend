@@ -7,7 +7,7 @@ This backend manages one company. All endpoints below require a login token in
 
 - `GET /api/organization` returns `{ "organization": null }` before setup, otherwise the company record.
 - `PATCH /api/organization` creates the company on first use (name and code required), then updates only supplied fields. Returns `{ "organization": { ... } }`.
-- `GET /api/organization/summary` returns `{ "summary": { "totalEmployees": 25, "departments": 3, "activeDepartments": 2, "teams": null, "activeReviewFrameworks": null } }`.
+- `GET /api/organization/summary` returns `{ "summary": { "totalEmployees": 25, "departments": 3, "activeDepartments": 2, "teams": 4, "activeReviewFrameworks": null } }`.
 
 Example setup body:
 
@@ -27,8 +27,8 @@ Example setup body:
 
 Codes are normalized to uppercase. Timezone must be recognized by the server's
 Intl timezone implementation. Logo URLs must use HTTP or HTTPS; this API does not upload images.
-There is no delete-company endpoint. Teams and review frameworks are not implemented;
-their summary values are `null` so the frontend can show an unavailable state.
+There is no delete-company endpoint. Team counts come from stored team records.
+Review frameworks are not implemented; their summary value is `null`.
 Total employees includes all employee records, including pending onboarding.
 
 ## Departments
@@ -53,6 +53,9 @@ Create body (name and code required):
 existing `GET /api/employees` endpoint for the employee selector. A department
 head may belong to another department. Status defaults to active. Department
 codes are unique across active and inactive records.
+Set up the company first. The backend attaches its ID as `organizationId` to each
+new department; clients must not supply that field. Creating a department before
+company setup returns 409.
 
 List response:
 
@@ -121,6 +124,33 @@ Authentication middleware uses `{ "message": "..." }`.
 - 403: role other than HR/admin.
 - 404: unknown department or employee.
 - 409: duplicate department code (or concurrent initial company creation).
+
+## Collection relationships
+
+The single company is stored in `organizations`. Departments, teams,
+employment types, and role definitions all require an `organizationId` reference.
+
+| Collection | Fields in addition to organizationId and timestamps |
+| --- | --- |
+| `departments` | name, code, description, headEmployeeId, status |
+| `teams` | name, code, departmentId, teamLeadEmployeeId, description, status |
+| `employmentTypes` | name, code, description, isActive |
+| `roleDefinitions` | code, label, permissions, isSystemRole, isActive |
+
+Team, employment-type, and role-definition models are available, with unique
+codes per organization. Their management endpoints and employee integration are
+not yet implemented. Role definitions currently store permission strings; login
+and route authorization still enforce the existing fixed user roles. `MANAGER`
+and the label `HOD` do not automatically become login roles. Permission strings
+must use dot-separated identifiers and cannot contain duplicates. Referential
+existence and matching organization for future team writes must be enforced by
+their service layer; Mongoose references alone do not enforce those rules.
+
+If departments were created before organizationId was added, set up the company
+and run `npm run departments:link` to preview the missing links. Then run
+`npm run departments:link -- --apply` to save them. The script only fills missing
+or null organization links and can be rerun. Back up the database before applying
+the migration. This migration does not change employee assignments.
 
 Unknown write fields are rejected. Required name/code fields cannot be cleared.
 Description is limited to 2000 characters, logo URL to 2048, other text to 200.

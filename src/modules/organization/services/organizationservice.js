@@ -1,5 +1,6 @@
 const Organization = require('../models/organization');
 const Department = require('../models/department');
+const Team = require('../models/team');
 const Employee = require('../../auth/models/employee');
 const { fields } = require('./validation');
 
@@ -21,13 +22,14 @@ async function updateOrganization(body) {
 }
 
 async function getSummary() {
-  const [totalEmployees, departments, activeDepartments] = await Promise.all([
+  const [totalEmployees, departments, activeDepartments, teams] = await Promise.all([
     Employee.countDocuments({}),
     Department.countDocuments({}),
     Department.countDocuments({ status: 'active' }),
+    Team.countDocuments({}),
   ]);
-  // These modules do not exist yet; null distinguishes unavailable counts from zero.
-  return { totalEmployees, departments, activeDepartments, teams: null, activeReviewFrameworks: null };
+  // Review frameworks do not exist yet; null distinguishes unavailable counts from zero.
+  return { totalEmployees, departments, activeDepartments, teams, activeReviewFrameworks: null };
 }
 
 module.exports = { getOrganization, updateOrganization, getSummary };
