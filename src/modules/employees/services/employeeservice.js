@@ -55,5 +55,20 @@ async function createEmployee(data) {
   return { employee, activationUrl };
 }
 
-module.exports = { createEmployee };
+async function listEmployees() {
+  const employees = await Employee.find({})
+    .sort({ createdAt: -1, _id: -1 })
+    .populate('user', 'email role status')
+    .lean();
+
+  // Accounts activated before onboarding status was synchronized are complete too.
+  return employees.map((employee) => ({
+    ...employee,
+    onboardingStatus: employee.user?.status === 'active'
+      ? 'completed'
+      : employee.onboardingStatus,
+  }));
+}
+
+module.exports = { createEmployee, listEmployees };
 

@@ -73,6 +73,10 @@ async function createPassword(setupToken, password) {
   user.passwordHash = await bcrypt.hash(password, 10);
   user.status = 'active';
   await user.save();
+  await Employee.updateOne(
+    { _id: user.employee, onboardingStatus: 'pending' },
+    { $set: { onboardingStatus: 'completed' } }
+  );
   await AccountActivation.deleteOne({ _id: activation._id });
   return user;
 }

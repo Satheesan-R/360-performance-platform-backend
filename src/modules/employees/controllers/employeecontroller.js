@@ -1,5 +1,14 @@
 ﻿const employeeService = require('../services/employeeservice');
 
+async function list(req, res, next) {
+  try {
+    const employees = await employeeService.listEmployees();
+    res.json({ employees });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function create(req, res, next) {
   try {
     const result = await employeeService.createEmployee(req.body);
@@ -14,4 +23,4 @@ async function create(req, res, next) {
   }
 }
 
-module.exports = { create };
+module.exports = { create, list };
