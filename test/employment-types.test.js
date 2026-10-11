@@ -37,6 +37,26 @@ test('list filters active/inactive and escapes search with pagination', async (t
   await assert.rejects(service.listEmploymentTypes({ status: 'active', isActive: 'false' }), { statusCode: 400 });
 });
 
+test('employment type saves accept status and store only isActive', async (t) => {
+  company(t);
+  t.mock.method(EmploymentType, 'create', async (value) => value);
+  for (const status of ['active', 'inactive']) {
+    const type = await service.createEmploymentType({ name: 'Intern', code: 'INTERN', status });
+    assert.equal(type.isActive, status === 'active');
+    assert.equal(Object.hasOwn(type, 'status'), false);
+  }
+  const type = { isActive: true, save: async () => type };
+  t.mock.method(EmploymentType, 'findOne', async () => type);
+  await service.updateEmploymentType(id, { status: 'inactive' });
+  assert.equal(type.isActive, false);
+  assert.equal(Object.hasOwn(type, 'status'), false);
+  await service.updateEmploymentType(id, { status: 'active', isActive: true });
+  assert.equal(type.isActive, true);
+  for (const body of [{ status: 'active', isActive: false }, { status: 'deleted' }, { status: '' }, { status: null }]) {
+    await assert.rejects(service.updateEmploymentType(id, body), { statusCode: 400 });
+  }
+});
+
 test('default initialization only inserts missing categories and preserves existing configuration', async (t) => {
   company(t);
   const codes = [];

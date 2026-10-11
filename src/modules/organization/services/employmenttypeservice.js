@@ -11,6 +11,19 @@ const defaults = [
   { name: 'Permanent', code: 'PERMANENT', description: 'Permanent employees' },
 ];
 
+function writeFields(body, required = []) {
+  const data = fields(body, [...allowed, 'status'], required);
+  if (Object.hasOwn(data, 'status')) {
+    const isActive = data.status === 'active';
+    if (Object.hasOwn(data, 'isActive') && data.isActive !== isActive) {
+      fail('status and isActive must agree');
+    }
+    data.isActive = isActive;
+    delete data.status;
+  }
+  return data;
+}
+
 async function company() {
   const organization = await Organization.findOne({ singletonKey: 'company' });
   if (!organization) fail('Set up the organization before managing employment types', 409);
@@ -18,14 +31,14 @@ async function company() {
 }
 
 async function createEmploymentType(body) {
-  const data = fields(body, allowed, ['name', 'code']);
+  const data = writeFields(body, ['name', 'code']);
   const organization = await company();
   return EmploymentType.create({ ...data, organizationId: organization._id });
 }
 
 async function updateEmploymentType(id, body) {
   objectId(id, 'employmentTypeId');
-  const data = fields(body, allowed);
+  const data = writeFields(body);
   const organization = await company();
   const type = await EmploymentType.findOne({ _id: id, organizationId: organization._id });
   if (!type) fail('Employment type was not found', 404);
