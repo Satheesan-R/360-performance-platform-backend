@@ -31,6 +31,7 @@ const employeeSchema = new mongoose.Schema(
     yearsOfExperience: { type: String, trim: true },
     jobTitle: { type: String, trim: true },
     department: { type: String, trim: true },
+    departmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null, index: true },
     gender: { type: String, trim: true },
     dateOfBirth: Date,
     JoiningDate: Date,
