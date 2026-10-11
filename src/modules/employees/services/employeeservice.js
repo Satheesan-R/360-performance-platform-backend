@@ -1,6 +1,7 @@
 ﻿const crypto = require('crypto');
 const Employee = require('../../auth/models/employee');
 const User = require('../../auth/models/usermodel');
+const Organization = require('../../organization/models/organization');
 const AccountActivation = require('../../auth/models/account-activation');
 const { sendActivationEmail } = require('../../../services/mailservice');
 const { env } = require('../../../config/env');
@@ -16,9 +17,11 @@ async function createEmployee(data) {
   if (await User.exists({ email })) throw new Error('A user with this email already exists');
 
   const names = data.fullName.trim().split(/\s+/);
+  const organization = await Organization.findOne({ singletonKey: 'company' });
   const department = data.departmentId != null ? await resolveDepartment(data.departmentId) : null;
   const employmentType = data.employmentTypeId != null ? await resolveEmploymentType(data.employmentTypeId) : null;
   const employee = await Employee.create({
+    organizationId: organization ? organization._id : null,
     employeeNumber: data.employeeNumber || 'EMP-' + Date.now(),
     firstName: names.shift(),
     lastName: names.join(' ') || '-',
@@ -67,6 +70,8 @@ async function listEmployees() {
     .populate('user', 'email role status')
     .populate('departmentId', 'name code status')
     .populate('employmentTypeId', 'name code isActive')
+    .populate('managerId', 'firstName lastName employeeNumber jobTitle')
+    .populate('teamId', 'name code status')
     .lean();
 
   // Accounts activated before onboarding status was synchronized are complete too.

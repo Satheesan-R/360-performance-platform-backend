@@ -2,6 +2,9 @@
 
 const employeeSchema = new mongoose.Schema(
   {
+    organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
+    teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null, index: true },
+    managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null, index: true },
     employeeNumber: {
       type: String,
       required: true,

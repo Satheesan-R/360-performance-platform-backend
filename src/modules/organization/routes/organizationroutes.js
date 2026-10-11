@@ -7,5 +7,6 @@ router.use(authenticate, allowRoles('hr', 'admin'));
 router.get('/', controller.overview);
 router.patch('/', controller.update);
 router.get('/summary', controller.summary);
+router.get('/hierarchy', controller.hierarchy);
 
 module.exports = router;

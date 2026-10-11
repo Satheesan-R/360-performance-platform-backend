@@ -162,8 +162,50 @@ Description is limited to 2000 characters, logo URL to 2048, other text to 200.
 Run `npm test`. Tests use mocked model operations and local HTTP requests;
 they do not connect to MongoDB or send email. Before deployment, verify setup,
 department creation, uniqueness indexes, assignment, and counts against a test
-MongoDB database. Frontend pages, employee team membership, hierarchy, and
-configurable permissions are future milestones.
+MongoDB database. Frontend pages, employee team membership, and configurable
+permissions are future milestones.
+
+## Reporting hierarchy
+
+- `GET /api/hierarchy?search=priya` (also `GET /api/organization/hierarchy`) returns
+  `{ "organizationId": "...", "employees": [...], "rootEmployeeIds": [...], "total": 25 }`.
+  With no search, the full employee graph is returned for the chart. Search matches
+  full name, employee number, or job title as literal, case-insensitive text. Roots
+  and total describe the full organization even when search filters employees.
+- `PATCH /api/employees/:id/manager` (also `/api/hierarchy/:id/manager`) accepts
+  `{ "managerId": "<employee id>" }`, or `{ "managerId": null }` to clear it, and
+  returns `{ "employee": { ... } }`. Only HR/admin may read or change hierarchy.
+
+Relationships live in `employees.managerId`, referencing another Employee. No
+separate hierarchy collection is used. Nodes include employeeNumber, firstName,
+lastName, jobTitle, departmentId, teamId, managerId, and the legacy text fields.
+Department and team are populated with name/code/status; manager is populated
+with firstName/lastName/employeeNumber/jobTitle. Use managerId._id to draw edges.
+The frontend owns organization chart rendering and manager selection.
+
+Assignments reject self-reporting, direct and indirect cycles, existing cyclic
+manager chains, missing employees, and explicit foreign organization links. New
+onboarding records automatically receive the configured company ID. For this
+single-company application, existing employees with missing/null organizationId
+are treated as belonging to the company. An assignment fills organizationId on
+the employee and selected manager if missing. Explicit other-company IDs are
+never accepted. Old text manager names are not guessed or migrated; HR must
+assign them explicitly. The text manager field remains transitional; use managerId
+for current reporting and future manager-reviewer selection.
+
+Manager updates use MongoDB transactions and a shared organization write to
+serialize concurrent hierarchy edits, preventing simultaneous requests from
+creating cycles. This requires MongoDB Atlas or another replica set/sharded
+deployment with transaction support; a standalone MongoDB server cannot perform
+these writes. No in-memory locking is used. Test concurrent reciprocal assignments
+against a test replica set before deployment; unit tests mock transactions.
+Organization setup is required (409 otherwise), missing employees return 404,
+invalid/circular/cross-organization assignments return 400, and a broken ancestor
+chain with a missing employee returns 409.
+
+The optional employee teamId reference is now available for display, but team
+membership assignment is not implemented here. Hierarchy is based on reporting
+relationships, not inferred from department heads, team leads, or access roles.
 
 ## Employment types
 
