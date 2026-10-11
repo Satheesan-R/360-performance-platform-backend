@@ -2,6 +2,9 @@
 
 const employeeSchema = new mongoose.Schema(
   {
+    organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
+    teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null, index: true },
+    managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null, index: true },
     employeeNumber: {
       type: String,
       required: true,
@@ -37,9 +40,10 @@ const employeeSchema = new mongoose.Schema(
     JoiningDate: Date,
     employmentType: {
       type: String,
-      enum: ['full-time', 'probation', 'intern'],
+      trim: true,
       default: 'full-time',
     },
+    employmentTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'EmploymentType', default: null, index: true },
     officeLocation: { type: String, trim: true },
     probationPeriod: { type: String, trim: true },
     manager: { type: String, trim: true },
