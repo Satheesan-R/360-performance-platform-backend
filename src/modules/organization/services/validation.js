@@ -19,8 +19,12 @@ function fields(body, allowed, required = []) {
   if (unknown.length) fail(`Unknown fields: ${unknown.join(', ')}`);
   const result = {};
   for (const [key, value] of Object.entries(body)) {
-    if (key === 'headEmployeeId') {
+    if (['headEmployeeId', 'teamLeadEmployeeId'].includes(key)) {
       result[key] = value === null ? null : objectId(value, key);
+      continue;
+    }
+    if (key === 'departmentId') {
+      result[key] = objectId(value, key);
       continue;
     }
     if (typeof value !== 'string') fail(`${key} must be text`);

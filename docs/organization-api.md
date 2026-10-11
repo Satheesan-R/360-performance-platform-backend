@@ -138,13 +138,14 @@ employment types, and role definitions all require an `organizationId` reference
 | `roleDefinitions` | code, label, permissions, isSystemRole, isActive |
 
 Team, employment-type, and role-definition models are available, with unique
-codes per organization. Their management endpoints and employee integration are
-not yet implemented. Role definitions currently store permission strings; login
+codes per organization. Team management endpoints are available as described below.
+Employment-type and role-definition management endpoints and employee team integration
+are not yet implemented. Role definitions currently store permission strings; login
 and route authorization still enforce the existing fixed user roles. `MANAGER`
 and the label `HOD` do not automatically become login roles. Permission strings
 must use dot-separated identifiers and cannot contain duplicates. Referential
-existence and matching organization for future team writes must be enforced by
-their service layer; Mongoose references alone do not enforce those rules.
+existence and matching organization for team writes are enforced by the team
+service; Mongoose references alone do not enforce those rules.
 
 If departments were created before organizationId was added, set up the company
 and run `npm run departments:link` to preview the missing links. Then run
@@ -160,5 +161,44 @@ Description is limited to 2000 characters, logo URL to 2048, other text to 200.
 Run `npm test`. Tests use mocked model operations and local HTTP requests;
 they do not connect to MongoDB or send email. Before deployment, verify setup,
 department creation, uniqueness indexes, assignment, and counts against a test
-MongoDB database. Frontend pages, teams, employment-type management, hierarchy,
-and configurable permissions are future milestones.
+MongoDB database. Frontend pages, employee team membership, employment-type
+management, hierarchy, and configurable permissions are future milestones.
+
+## Teams
+
+- `GET /api/teams?search=frontend&status=active&departmentId=<id>&page=1&limit=20`
+  returns `{ "teams": [...], "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 } }`.
+- `POST /api/teams` returns status 201 and `{ "team": { ... } }`.
+- `PATCH /api/teams/:id` returns `{ "team": { ... } }`.
+
+Example create body:
+
+```json
+{
+  "name": "Frontend Team",
+  "code": "ENG-FE",
+  "departmentId": "507f1f77bcf86cd799439011",
+  "teamLeadEmployeeId": null,
+  "description": "Frontend application development",
+  "status": "active"
+}
+```
+
+Name, code, and departmentId are required on create. The company ID is attached
+by the backend. Department must belong to the company and be active when creating,
+moving, or reactivating a team. Backfill missing department organization links with
+the migration above before using those departments. Team lead must be an existing
+employee, or null; they may belong to another department. Codes are uppercase and
+unique within the organization. PATCH accepts any subset of create fields.
+
+Responses populate `departmentId` with `_id`, `name`, `code`, and `status`, and
+`teamLeadEmployeeId` with `_id`, `employeeNumber`, `firstName`, `lastName`, and
+`workEmail`. Search, pagination, role restrictions, and error formats follow the
+department API conventions. Unknown teams/leads/departments return 404, invalid
+relationships return 400, and missing company setup or duplicate codes return 409.
+
+Deactivation keeps the team and its relationships. Existing teams remain editable
+when their department becomes inactive, but cannot be moved into an inactive
+department or reactivated under one. This API does not assign employee members;
+there is no employee teamId field or member count yet. Use these endpoints for
+the frontend `/hr/organization/teams` page.

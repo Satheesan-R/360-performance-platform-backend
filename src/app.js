@@ -5,6 +5,7 @@ const authRoutes = require('./modules/auth/routes/authroutes');
 const employeeRoutes = require('./modules/employees/routes/employeeroutes');
 const organizationRoutes = require('./modules/organization/routes/organizationroutes');
 const departmentRoutes = require('./modules/organization/routes/departmentroutes');
+const teamRoutes = require('./modules/organization/routes/teamroutes');
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/organization', organizationRoutes);
 app.use('/api/departments', departmentRoutes);
+app.use('/api/teams', teamRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
