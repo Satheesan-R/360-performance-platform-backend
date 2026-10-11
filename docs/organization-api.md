@@ -139,8 +139,9 @@ employment types, and role definitions all require an `organizationId` reference
 
 Team, employment-type, and role-definition models are available, with unique
 codes per organization. Team management endpoints are available as described below.
-Employment-type and role-definition management endpoints and employee team integration
-are not yet implemented. Role definitions currently store permission strings; login
+Employment-type management endpoints are available as described below. Role-definition
+management endpoints and employee team integration are not yet implemented.
+Role definitions currently store permission strings; login
 and route authorization still enforce the existing fixed user roles. `MANAGER`
 and the label `HOD` do not automatically become login roles. Permission strings
 must use dot-separated identifiers and cannot contain duplicates. Referential
@@ -161,8 +162,53 @@ Description is limited to 2000 characters, logo URL to 2048, other text to 200.
 Run `npm test`. Tests use mocked model operations and local HTTP requests;
 they do not connect to MongoDB or send email. Before deployment, verify setup,
 department creation, uniqueness indexes, assignment, and counts against a test
-MongoDB database. Frontend pages, employee team membership, employment-type
-management, hierarchy, and configurable permissions are future milestones.
+MongoDB database. Frontend pages, employee team membership, hierarchy, and
+configurable permissions are future milestones.
+
+## Employment types
+
+- `GET /api/employment-types?search=intern&status=active&page=1&limit=20`
+  returns `{ "employmentTypes": [...], "pagination": { ... } }`.
+  `isActive=true` or `isActive=false` is also supported as a filter.
+- `POST /api/employment-types` creates a classification, returning status 201 and
+  `{ "employmentType": { ... } }`.
+- `PATCH /api/employment-types/:id` updates supplied fields, returning
+  `{ "employmentType": { ... } }`.
+- `POST /api/employment-types/defaults` initializes Intern (`INTERN`), Probationary
+  (`PROBATION`), and Permanent (`PERMANENT`) and returns `{ "employmentTypes": [...] }`.
+  Call this explicitly after organization setup. It inserts only missing codes and
+  preserves existing labels and inactive statuses. GET never seeds data.
+
+Create example:
+
+```json
+{
+  "name": "Intern",
+  "code": "INTERN",
+  "description": "Employees on an internship",
+  "isActive": true
+}
+```
+
+Name and code are required; isActive defaults to true and must be a JSON boolean.
+The organization ID is attached automatically. Codes are normalized to uppercase
+and unique within the company. Deactivation preserves employee references but
+rejects new assignments. These endpoints require HR/admin access and company setup.
+They use the same pagination, literal search, and error conventions as Teams.
+
+`POST /api/employees` now accepts `employmentTypeId`; it takes precedence over the
+legacy string. `PATCH /api/employees/:id/employment-type` accepts only
+`{ "employmentTypeId": "<id>" }` and assigns an existing active classification.
+Employee listing and assignment responses populate that reference with name,
+code, and isActive. Existing employees are not automatically migrated; use this
+PATCH endpoint after reviewing their classifications. Renaming labels preserves
+IDs; display the populated name. Legacy strings remain supported, with starter
+codes mapped to intern, probation, and full-time; custom codes use lowercase.
+The legacy string is transitional; future review routing must use employmentTypeId.
+
+Workflow execution, default workflow selection, and optional review cycle types
+are deferred until those modules exist. There are no hard-coded review policies.
+The frontend `/hr/organization/employment-types` should call `/api/employment-types`.
 
 ## Teams
 

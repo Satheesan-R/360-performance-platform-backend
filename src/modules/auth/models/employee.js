@@ -37,9 +37,10 @@ const employeeSchema = new mongoose.Schema(
     JoiningDate: Date,
     employmentType: {
       type: String,
-      enum: ['full-time', 'probation', 'intern'],
+      trim: true,
       default: 'full-time',
     },
+    employmentTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'EmploymentType', default: null, index: true },
     officeLocation: { type: String, trim: true },
     probationPeriod: { type: String, trim: true },
     manager: { type: String, trim: true },

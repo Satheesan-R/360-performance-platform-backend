@@ -1,6 +1,7 @@
 const organizationService = require('../services/organizationservice');
 const departmentService = require('../services/departmentservice');
 const teamService = require('../services/teamservice');
+const employmentTypeService = require('../services/employmenttypeservice');
 
 const handle = (operation, key, status = 200) => async (req, res, next) => {
   try {
@@ -20,4 +21,9 @@ module.exports = {
   teams: handle((req) => teamService.listTeams(req.query)),
   createTeam: handle((req) => teamService.createTeam(req.body), 'team', 201),
   updateTeam: handle((req) => teamService.updateTeam(req.params.id, req.body), 'team'),
+  employmentTypes: handle((req) => employmentTypeService.listEmploymentTypes(req.query)),
+  createEmploymentType: handle((req) => employmentTypeService.createEmploymentType(req.body), 'employmentType', 201),
+  updateEmploymentType: handle((req) => employmentTypeService.updateEmploymentType(req.params.id, req.body), 'employmentType'),
+  initializeEmploymentTypes: handle(() => employmentTypeService.initializeDefaults(), 'employmentTypes'),
+  assignEmploymentType: handle((req) => employmentTypeService.assignEmploymentType(req.params.id, req.body), 'employee'),
 };

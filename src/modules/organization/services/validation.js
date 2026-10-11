@@ -19,6 +19,11 @@ function fields(body, allowed, required = []) {
   if (unknown.length) fail(`Unknown fields: ${unknown.join(', ')}`);
   const result = {};
   for (const [key, value] of Object.entries(body)) {
+    if (key === 'isActive') {
+      if (typeof value !== 'boolean') fail('isActive must be true or false');
+      result[key] = value;
+      continue;
+    }
     if (['headEmployeeId', 'teamLeadEmployeeId'].includes(key)) {
       result[key] = value === null ? null : objectId(value, key);
       continue;

@@ -7,5 +7,6 @@ const router = express.Router();
 router.get('/', authenticate, allowRoles('hr', 'admin'), controller.list);
 router.post('/', authenticate, allowRoles('hr', 'admin'), controller.create);
 router.patch('/:id/department', authenticate, allowRoles('hr', 'admin'), organizationController.assignDepartment);
+router.patch('/:id/employment-type', authenticate, allowRoles('hr', 'admin'), organizationController.assignEmploymentType);
 
 module.exports = router;
