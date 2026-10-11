@@ -233,6 +233,9 @@ Create example:
 ```
 
 Name and code are required; isActive defaults to true and must be a JSON boolean.
+Create and update also accept `status: "active"` or `status: "inactive"` from
+frontend forms. This is converted to isActive before saving. If both fields are
+provided, they must agree. Responses and database records continue to use isActive.
 The organization ID is attached automatically. Codes are normalized to uppercase
 and unique within the company. Deactivation preserves employee references but
 rejects new assignments. These endpoints require HR/admin access and company setup.
