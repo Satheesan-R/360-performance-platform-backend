@@ -8,6 +8,7 @@ const departmentRoutes = require('./modules/organization/routes/departmentroutes
 const teamRoutes = require('./modules/organization/routes/teamroutes');
 const employmentTypeRoutes = require('./modules/organization/routes/employmenttyperoutes');
 const hierarchyRoutes = require('./modules/organization/routes/hierarchyroutes');
+const settingsRoutes = require('./modules/settings/routes/settingsroutes');
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use('/api/departments', departmentRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/employment-types', employmentTypeRoutes);
 app.use('/api/hierarchy', hierarchyRoutes);
+app.use('/api/settings', settingsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
