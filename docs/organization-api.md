@@ -7,7 +7,7 @@ This backend manages one company. All endpoints below require a login token in
 
 - `GET /api/organization` returns `{ "organization": null }` before setup, otherwise the company record.
 - `PATCH /api/organization` creates the company on first use (name and code required), then updates only supplied fields. Returns `{ "organization": { ... } }`.
-- `GET /api/organization/summary` returns `{ "summary": { "totalEmployees": 25, "departments": 3, "activeDepartments": 2, "teams": 4, "activeReviewFrameworks": null } }`.
+- `GET /api/organization/summary` returns `{ "summary": { "totalEmployees": 25, "departments": 3, "activeDepartments": 2, "teams": 4, "activeReviewFrameworks": 2 } }`.
 
 Example setup body:
 
@@ -28,7 +28,7 @@ Example setup body:
 Codes are normalized to uppercase. Timezone must be recognized by the server's
 Intl timezone implementation. Logo URLs must use HTTP or HTTPS; this API does not upload images.
 There is no delete-company endpoint. Team counts come from stored team records.
-Review frameworks are not implemented; their summary value is `null`.
+Active review frameworks are counted from the `performanceFrameworks` collection.
 Total employees includes all employee records, including pending onboarding.
 
 ## Departments
