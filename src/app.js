@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const { env } = require('./config/env');
 const authRoutes = require('./modules/auth/routes/authroutes');
@@ -43,3 +43,4 @@ app.use((error, req, res, next) => {
 });
 
 module.exports = app;
+
