@@ -3,6 +3,8 @@ const Organization = require('../../organization/models/organization');
 const EmploymentType = require('../../organization/models/employmenttype');
 const User = require('../../auth/models/usermodel');
 const { fail, objectId, pagination } = require('../../organization/services/validation');
+const { scoringSummary, requireValidWeights } = require('./criteriavalidation');
+const { versionFilter } = require('./criterionservice');
 
 const statuses = ['draft', 'active', 'archived'];
 const allowed = ['name', 'description', 'applicableEmploymentTypeIds', 'applicableJobRoles', 'status'];
@@ -56,12 +58,12 @@ async function validateEmploymentTypes(ids, organizationId) {
 
 function overview(record) {
   const data = typeof record.toObject === 'function' ? record.toObject() : record;
-  // No competencies, KPIs or scoring configuration can be attached in this milestone.
-  return { ...data, competencyCount: 0, kpiCount: 0, ratingScale: null };
+  return { ...data, competencies: data.competencies || [], kpis: data.kpis || [], ...scoringSummary(data), ratingScale: null };
 }
 
 async function createFramework(body, userId) {
   const data = parseFields(body, true);
+  if (data.status === 'active') requireValidWeights({ competencies: [], kpis: [] });
   objectId(userId, 'createdBy');
   const organization = await company();
   if (!await User.exists({ _id: userId, status: 'active', role: { $in: ['hr', 'admin'] } })) {
@@ -86,8 +88,11 @@ async function updateFramework(id, body) {
   const data = parseFields(body);
   const organization = await company();
   await validateEmploymentTypes(data.applicableEmploymentTypeIds, organization._id);
-  const framework = await Framework.findOneAndUpdate({ _id: id, organizationId: organization._id }, { $set: data }, { new: true, runValidators: true }).populate(populate);
-  if (!framework) fail('Performance framework was not found', 404);
+  const existing = await Framework.findOne({ _id: id, organizationId: organization._id }).lean();
+  if (!existing) fail('Performance framework was not found', 404);
+  if ((data.status || existing.status) === 'active') requireValidWeights(existing);
+  const framework = await Framework.findOneAndUpdate(versionFilter(existing), { $set: data, $inc: { __v: 1 } }, { new: true, runValidators: true }).populate(populate);
+  if (!framework) fail('Framework changed while saving. Reload and try again', 409);
   return overview(framework);
 }
 
