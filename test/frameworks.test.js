@@ -67,18 +67,18 @@ test('framework detail and archive updates scope organization and reject missing
   company(t);
   const detail = t.mock.method(Framework, 'findOne', (filter) => {
     assert.equal(filter.organizationId, org);
-    return { populate() { return this; }, lean: async () => ({ _id: id, name: 'Engineering' }) };
+    return { populate() { return this; }, lean: async () => ({ _id: id, organizationId: org, __v: 0, name: 'Engineering' }) };
   });
   assert.equal((await service.getFramework(id)).name, 'Engineering');
   const update = t.mock.method(Framework, 'findOneAndUpdate', (filter, data, options) => {
-    assert.deepEqual(filter, { _id: id, organizationId: org });
-    assert.deepEqual(data, { $set: { status: 'archived' } });
+    assert.deepEqual(filter, { _id: id, organizationId: org, __v: 0 });
+    assert.deepEqual(data, { $set: { status: 'archived' }, $inc: { __v: 1 } });
     assert.equal(options.runValidators, true);
     return { populate: async () => ({ _id: id, status: 'archived' }) };
   });
   assert.equal((await service.updateFramework(id, { status: 'archived' })).status, 'archived');
   update.mock.mockImplementation(() => ({ populate: async () => null }));
-  await assert.rejects(service.updateFramework(id, { status: 'draft' }), { statusCode: 404 });
+  await assert.rejects(service.updateFramework(id, { status: 'draft' }), { statusCode: 409 });
   detail.mock.mockImplementation(() => ({ populate() { return this; }, lean: async () => null }));
   await assert.rejects(service.getFramework(id), { statusCode: 404 });
   await assert.rejects(service.getFramework('bad'), { statusCode: 400 });
