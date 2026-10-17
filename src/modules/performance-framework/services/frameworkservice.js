@@ -5,6 +5,7 @@ const User = require('../../auth/models/usermodel');
 const { fail, objectId, pagination } = require('../../organization/services/validation');
 const { scoringSummary, requireValidWeights } = require('./criteriavalidation');
 const { versionFilter } = require('./criterionservice');
+const { requireScoringReady, scoringStatus } = require('./scoringvalidation');
 
 const statuses = ['draft', 'active', 'archived'];
 const allowed = ['name', 'description', 'applicableEmploymentTypeIds', 'applicableJobRoles', 'status'];
@@ -58,7 +59,7 @@ async function validateEmploymentTypes(ids, organizationId) {
 
 function overview(record) {
   const data = typeof record.toObject === 'function' ? record.toObject() : record;
-  return { ...data, competencies: data.competencies || [], kpis: data.kpis || [], ...scoringSummary(data), ratingScale: null };
+  return { ...data, competencies: data.competencies || [], kpis: data.kpis || [], ...scoringSummary(data), ratingScale: data.ratingScale ?? null, scoringValidation: scoringStatus(data) };
 }
 
 async function createFramework(body, userId) {
@@ -90,7 +91,7 @@ async function updateFramework(id, body) {
   await validateEmploymentTypes(data.applicableEmploymentTypeIds, organization._id);
   const existing = await Framework.findOne({ _id: id, organizationId: organization._id }).lean();
   if (!existing) fail('Performance framework was not found', 404);
-  if ((data.status || existing.status) === 'active') requireValidWeights(existing);
+  if ((data.status || existing.status) === 'active') requireScoringReady(existing);
   const framework = await Framework.findOneAndUpdate(versionFilter(existing), { $set: data, $inc: { __v: 1 } }, { new: true, runValidators: true }).populate(populate);
   if (!framework) fail('Framework changed while saving. Reload and try again', 409);
   return overview(framework);
