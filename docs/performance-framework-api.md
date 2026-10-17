@@ -83,8 +83,9 @@ setup returns 409. Authentication middleware uses `{ "message": "..." }`.
 
 `npm test` checks validation, references, access control, listing, status changes,
 and summaries using mocked database calls and local HTTP requests. Live MongoDB
-verification and frontend integration remain necessary. Review templates and
-review cycles are future milestones.
+verification and frontend integration remain necessary. Review Templates are
+available through the [template API](review-templates-api.md). Review cycles remain
+a future milestone.
 
 ## Competencies and KPIs
 
@@ -318,8 +319,10 @@ snapshot `_id` (and sourceVersion) on the published cycle and calculate scores f
 snapshot.configuration using its scoringFormulaVersion, never from the live
 framework. Reuse an existing snapshot ID when publishing the same configuration
 version. Existing cycles are not migrated or protected automatically by this
-endpoint alone. Review templates and cycle publication will need their own snapshot
-integration; this module supplies the framework snapshot contract.
+endpoint alone. The [Review Templates API](review-templates-api.md) now pins a
+framework configuration on activation and supplies template snapshots. Cycle
+publication must integrate those snapshots; this module supplies the framework
+snapshot contract.
 
 All scoring/snapshot routes require HR/admin authentication and scope the parent
 framework to the single company. Invalid config/sample ratings return 400, missing
