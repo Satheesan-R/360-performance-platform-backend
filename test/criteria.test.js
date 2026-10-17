@@ -78,8 +78,9 @@ test('activation requires 100%, and active edits cannot break scoring totals', a
   const state = setup(t);
   await assert.rejects(frameworks.updateFramework(id, { status: 'active' }), { statusCode: 400 });
   await assert.rejects(frameworks.createFramework({ name: 'Empty', status: 'active' }, itemId), { statusCode: 400 });
-  state.competencies = [competency, { ...competency, _id: new mongoose.Types.ObjectId(), name: 'Communication', weight: 20 }];
+  state.competencies = [competency, { ...competency, _id: new mongoose.Types.ObjectId(), name: 'Communication', category: 'behavioral', weight: 20 }];
   state.kpis = [kpi];
+  Object.assign(state, JSON.parse(JSON.stringify(require('./fixtures/scoring.json'))));
   const active = await frameworks.updateFramework(id, { status: 'active' });
   assert.equal(active.totalWeight, 100);
   assert.equal(active.competencyCount, 2);

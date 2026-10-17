@@ -1,0 +1,16 @@
+{
+  "ratingScale": {
+    "min": 1,
+    "max": 5,
+    "levels": [
+      { "value": 1, "label": "Needs Improvement" },
+      { "value": 2, "label": "Developing" },
+      { "value": 3, "label": "Meets Expectations" },
+      { "value": 4, "label": "Exceeds Expectations" },
+      { "value": 5, "label": "Outstanding" }
+    ]
+  },
+  "categoryWeights": { "technical": 60, "behavioral": 40 },
+  "reviewerWeights": { "self": 20, "peer": 20, "manager": 60 },
+  "enabledReviewers": ["self", "peer", "manager"]
+}

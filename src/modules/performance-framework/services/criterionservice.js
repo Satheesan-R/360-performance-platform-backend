@@ -3,6 +3,7 @@ const Framework = require('../models/performanceframework');
 const Organization = require('../../organization/models/organization');
 const { fail, objectId } = require('../../organization/services/validation');
 const { parseCriterion, scoringSummary, requireValidWeights } = require('./criteriavalidation');
+const { requireScoringReady } = require('./scoringvalidation');
 
 async function loadFramework(id) {
   objectId(id, 'frameworkId');
@@ -46,7 +47,7 @@ async function mutateCriterion(frameworkId, kind, itemId, body) {
     if (index === -1) fail('Criterion was not found', 404);
     items[index] = { ...items[index], ...data, updatedAt: now };
   }
-  if (framework.status === 'active') requireValidWeights({ ...framework, [kind]: items });
+  if (framework.status === 'active') requireScoringReady({ ...framework, [kind]: items });
   const updated = await Framework.findOneAndUpdate(versionFilter(framework),
     { $set: { [kind]: items }, $inc: { __v: 1 } }, { new: true, runValidators: true }).lean();
   if (!updated) fail('Framework changed while saving. Reload and try again', 409);
