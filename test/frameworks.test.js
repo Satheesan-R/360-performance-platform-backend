@@ -92,6 +92,32 @@ test('summary counts statuses and company setup is required', async (t) => {
   await assert.rejects(service.listFrameworks({}), { statusCode: 409 });
 });
 
+test('activation rechecks saved employment types and allows a valid replacement selection', async (t) => {
+  company(t);
+  const existing = { _id: id, organizationId: org, __v: 0, name: 'Engineering', status: 'draft',
+    ...JSON.parse(JSON.stringify(require('./fixtures/scoring.json'))),
+    categoryWeights: { technical: 100, behavioral: 0 }, applicableEmploymentTypeIds: [id],
+    competencies: [{ _id: user, category: 'technical', weight: 100, status: 'active' }], kpis: [] };
+  t.mock.method(Framework, 'findOne', () => ({ lean: async () => existing }));
+  const lookups = [];
+  t.mock.method(EmploymentType, 'countDocuments', async (filter) => {
+    assert.equal(filter.organizationId, org);
+    assert.equal(filter.isActive, true);
+    lookups.push(filter._id.$in);
+    return filter._id.$in.includes(user) ? 1 : 0;
+  });
+  const write = t.mock.method(Framework, 'findOneAndUpdate', (filter, data) => ({ populate: async () => ({ ...existing, ...data.$set }) }));
+  await assert.rejects(service.updateFramework(id, { status: 'active' }), { statusCode: 400 });
+  assert.equal(write.mock.callCount(), 0);
+  assert.deepEqual(lookups[0], [id]);
+  const result = await service.updateFramework(id, { status: 'active', applicableEmploymentTypeIds: [user] });
+  assert.equal(result.status, 'active');
+  assert.deepEqual(result.applicableEmploymentTypeIds, [user]);
+  const countBeforeMetadataEdit = lookups.length;
+  await service.updateFramework(id, { description: 'Updated description' });
+  assert.equal(lookups.length, countBeforeMetadataEdit);
+});
+
 test('framework APIs enforce HR/admin access and derive creator from login token', async (t) => {
   t.mock.method(service, 'listFrameworks', async () => ({ frameworks: [], pagination: { total: 0 } }));
   t.mock.method(service, 'getSummary', async () => ({ total: 0 }));

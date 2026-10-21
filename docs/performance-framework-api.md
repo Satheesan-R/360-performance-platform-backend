@@ -69,6 +69,9 @@ enabled reviewers. This does not certify that review templates are ready. No del
 is provided, preserving the parent record for future review templates/cycles.
 Updating employment type selections validates them; a label/description-only edit
 can preserve an existing selection whose employment type was later deactivated.
+Activating a draft or archived framework rechecks the resulting employment-type
+selection, even when the PATCH body contains only status. Replace inactive or
+missing selections (or clear targeting with an empty array) before activation.
 
 Organization Overview now returns the actual active framework count through
 `GET /api/organization/summary`.

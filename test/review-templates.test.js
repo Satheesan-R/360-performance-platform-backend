@@ -151,6 +151,29 @@ test('template edits retain question IDs and concurrent saves reject stale versi
   assert.equal(state.template.frameworkSnapshot, null);
 });
 
+test('preview readiness validates proposed and inherited targeting without changing frozen templates', async (t) => {
+  const state = setup(t);
+  await service.createTemplate(body(), user);
+  const originalVersion = state.template.__v;
+  const proposed = await previewTemplate(id, { employmentTypeIds: [id] });
+  assert.equal(proposed.validation.ready, false);
+  assert.match(proposed.validation.message, /framework targeting/);
+  assert.deepEqual(state.template.employmentTypeIds, [type]);
+  assert.equal(state.template.__v, originalVersion);
+  await service.updateTemplate(id, { status: 'active' });
+  t.mock.method(EmploymentType, 'countDocuments', async () => 0);
+  const savedActive = await previewTemplate(id);
+  assert.equal(savedActive.validation.ready, true);
+  const changedActive = await previewTemplate(id, { employmentTypeIds: [type] });
+  assert.equal(changedActive.validation.ready, false);
+  assert.match(changedActive.validation.message, /Employment types must exist/);
+  // Empty selections inherit the framework's classifications, which also need validation.
+  await service.updateTemplate(id, { status: 'draft' });
+  const inherited = await previewTemplate(id, { employmentTypeIds: [] });
+  assert.equal(inherited.validation.ready, false);
+  assert.deepEqual(inherited.effectiveEmploymentTypeIds, [type]);
+});
+
 test('template snapshots preserve old questions and pinned scoring after template edits', async (t) => {
   const state = setup(t);
   await service.createTemplate({ ...body(), status: 'active' }, user);

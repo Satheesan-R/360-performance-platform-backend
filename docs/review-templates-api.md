@@ -160,6 +160,11 @@ criteriaWeights and sections. Each section includes resolved competencies/kpis,
 questions, comments flags and effective evidenceRequired. Missing criterion
 references are returned with `{ "_id": "...", "missing": true }`. Incomplete
 drafts return validation.ready: false rather than silently dropping criteria.
+Readiness also checks current employment-type targeting for drafts and proposed
+framework/type selection changes, including types inherited from the framework.
+Unchanged active or archived previews preserve their pinned targeting without
+rechecking current classification activity; proposing a targeting change checks
+the current active classifications, matching the Save validation rules.
 criteriaWeights is empty unless the template is ready. There are no submitted
 answers, ratings, employee data or uploaded files in this preview.
 
