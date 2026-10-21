@@ -88,9 +88,11 @@ async function updateFramework(id, body) {
   objectId(id, 'frameworkId');
   const data = parseFields(body);
   const organization = await company();
-  await validateEmploymentTypes(data.applicableEmploymentTypeIds, organization._id);
   const existing = await Framework.findOne({ _id: id, organizationId: organization._id }).lean();
   if (!existing) fail('Performance framework was not found', 404);
+  if (Object.hasOwn(data, 'applicableEmploymentTypeIds') || (data.status === 'active' && existing.status !== 'active')) {
+    await validateEmploymentTypes(data.applicableEmploymentTypeIds ?? existing.applicableEmploymentTypeIds, organization._id);
+  }
   if ((data.status || existing.status) === 'active') requireScoringReady(existing);
   const framework = await Framework.findOneAndUpdate(versionFilter(existing), { $set: data, $inc: { __v: 1 } }, { new: true, runValidators: true }).populate(populate);
   if (!framework) fail('Framework changed while saving. Reload and try again', 409);
