@@ -1,13 +1,16 @@
 const { getTemplate } = require('./templateservice');
 const { parseTemplate, validateEmbeddedIds } = require('./templatevalidation');
-const { resolveFramework, frameworkForTemplate, requireTemplateReady } = require('./templaterelations');
+const { resolveFramework, frameworkForTemplate, requireTemplateReady, validateEmploymentTypes } = require('./templaterelations');
 const { effectiveCriteria } = require('../../performance-framework/services/scoringpreview');
 const { fail } = require('../../organization/services/validation');
 
-async function renderPreview(template) {
+async function renderPreview(template, checkEmploymentTypes = !template.frameworkSnapshot) {
   const framework = frameworkForTemplate(template) || await resolveFramework(template);
   let validation = { ready: true, message: null };
-  try { requireTemplateReady(template, framework); }
+  try {
+    if (checkEmploymentTypes) await validateEmploymentTypes(template, framework);
+    requireTemplateReady(template, framework);
+  }
   catch (error) { if (error.statusCode !== 400) throw error; validation = { ready: false, message: error.message }; }
   const resolve = (ids, items) => (ids || []).map((id) => (items || []).find((item) => String(item._id) === String(id)) || { _id: id, missing: true });
   return {
@@ -36,7 +39,7 @@ async function previewTemplate(id, body) {
   if (data.status === 'draft' || (data.frameworkId && String(data.frameworkId) !== String(template.frameworkId))) {
     candidate.frameworkSnapshot = null; candidate.frameworkVersion = null;
   }
-  return renderPreview(candidate);
+  return renderPreview(candidate, !candidate.frameworkSnapshot || Object.hasOwn(data, 'employmentTypeIds') || Object.hasOwn(data, 'frameworkId'));
 }
 
 module.exports = { previewTemplate, renderPreview };
