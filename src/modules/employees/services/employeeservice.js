@@ -1,9 +1,12 @@
 ﻿const crypto = require('crypto');
 const Employee = require('../../auth/models/employee');
 const User = require('../../auth/models/usermodel');
+const Organization = require('../../organization/models/organization');
 const AccountActivation = require('../../auth/models/account-activation');
 const { sendActivationEmail, ensureMailConfigured } = require('../../../services/mailservice');
 const { env } = require('../../../config/env');
+const { resolveDepartment } = require('../../organization/services/departmentservice');
+const { resolveEmploymentType } = require('../../organization/services/employmenttypeservice');
 
 async function createEmployee(data) {
   const email = data.companyEmail?.toLowerCase().trim();
@@ -16,7 +19,11 @@ async function createEmployee(data) {
   if (await User.exists({ email })) throw new Error('A user with this email already exists');
 
   const names = data.fullName.trim().split(/\s+/);
+  const organization = await Organization.findOne({ singletonKey: 'company' });
+  const department = data.departmentId != null ? await resolveDepartment(data.departmentId) : null;
+  const employmentType = data.employmentTypeId != null ? await resolveEmploymentType(data.employmentTypeId) : null;
   const employee = await Employee.create({
+    organizationId: organization ? organization._id : null,
     employeeNumber: data.employeeNumber || 'EMP-' + Date.now(),
     firstName: names.shift(),
     lastName: names.join(' ') || '-',
@@ -24,10 +31,10 @@ async function createEmployee(data) {
     personalEmail: data.personalEmail,
     phone: data.phone,
     jobTitle: data.designation,
-    department: data.department,
-    manager: data.reportingManager,
+    departmentId: department ? department._id : null,
+    managerId: data.managerId || null,
     JoiningDate: data.contractStartDate,
-    employmentType: data.employmentType,
+    employmentTypeId: employmentType ? employmentType._id : null,
     officeLocation: data.officeLocation,
     gender: data.gender,
     dateOfBirth: data.dateOfBirth,
@@ -67,6 +74,10 @@ async function listEmployees() {
   const employees = await Employee.find({})
     .sort({ createdAt: -1, _id: -1 })
     .populate('user', 'email role status')
+    .populate('departmentId', 'name code status')
+    .populate('employmentTypeId', 'name code isActive')
+    .populate('managerId', 'firstName lastName employeeNumber jobTitle')
+    .populate('teamId', 'name code status')
     .lean();
 
   // Accounts activated before onboarding status was synchronized are complete too.
@@ -79,4 +90,3 @@ async function listEmployees() {
 }
 
 module.exports = { createEmployee, listEmployees };
-
