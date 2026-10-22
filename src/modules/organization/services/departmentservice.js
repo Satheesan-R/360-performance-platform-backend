@@ -76,8 +76,6 @@ async function assignDepartment(employeeId, body) {
   const employee = await Employee.findById(employeeId);
   if (!employee) fail('Employee was not found', 404);
   employee.departmentId = department ? department._id : null;
-  // Keep the old field readable by the current frontend during its transition.
-  employee.department = department ? department.name : '';
   await employee.save();
   return employee.populate('departmentId', 'name code status');
 }
