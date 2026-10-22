@@ -13,7 +13,10 @@ async function create(req, res, next) {
   try {
     const result = await employeeService.createEmployee(req.body);
     res.status(201).json({
-      message: 'Employee created and activation email sent',
+      message: result.emailDelivery.status === 'accepted'
+        ? 'Employee created. Activation email accepted by the mail server'
+        : result.emailDelivery.message,
+      emailDelivery: result.emailDelivery,
       employee: result.employee,
       ...(process.env.NODE_ENV !== 'production' && { activationUrl: result.activationUrl }),
     });

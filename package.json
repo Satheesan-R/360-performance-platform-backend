@@ -5,6 +5,7 @@
     "main": "index.js",
     "scripts": {
         "test": "node --test",
+        "mail:verify": "node scripts/verify-mail.js",
         "departments:link": "node scripts/link-departments.js",
         "start": "node src/server.js",
         "dev": "nodemon src/server.js",
