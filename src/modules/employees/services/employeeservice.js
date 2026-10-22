@@ -6,7 +6,7 @@ const AccountActivation = require('../../auth/models/account-activation');
 const { sendActivationEmail } = require('../../../services/mailservice');
 const { env } = require('../../../config/env');
 const { resolveDepartment } = require('../../organization/services/departmentservice');
-const { resolveEmploymentType, legacyValue } = require('../../organization/services/employmenttypeservice');
+const { resolveEmploymentType } = require('../../organization/services/employmenttypeservice');
 
 async function createEmployee(data) {
   const email = data.companyEmail?.toLowerCase().trim();
@@ -29,11 +29,9 @@ async function createEmployee(data) {
     personalEmail: data.personalEmail,
     phone: data.phone,
     jobTitle: data.designation,
-    department: department ? department.name : data.department,
     departmentId: department ? department._id : null,
-    manager: data.reportingManager,
+    managerId: data.managerId || null,
     JoiningDate: data.contractStartDate,
-    employmentType: employmentType ? legacyValue(employmentType) : data.employmentType,
     employmentTypeId: employmentType ? employmentType._id : null,
     officeLocation: data.officeLocation,
     gender: data.gender,
@@ -84,4 +82,3 @@ async function listEmployees() {
 }
 
 module.exports = { createEmployee, listEmployees };
-
