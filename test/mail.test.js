@@ -14,8 +14,9 @@ function configure(t) {
   Object.assign(env, { smtpUser: 'sender@example.com', smtpPass: 'test-only', mailFrom: 'sender@example.com' });
   t.after(() => Object.assign(env, old));
 }
-function database(t) {
+function database(t, recipientUsers = []) {
   t.mock.method(User, 'exists', async () => false);
+  t.mock.method(User, 'find', () => ({ select: () => ({ lean: async () => recipientUsers }) }));
   t.mock.method(Employee, 'create', async (data) => ({ _id: 'employee', ...data, save: async () => {} }));
   t.mock.method(User, 'create', async () => ({ _id: 'user' }));
   t.mock.method(Activation, 'create', async () => ({}));
@@ -37,6 +38,45 @@ test('activation goes to companyEmail and reports server acceptance without clai
   } }));
   const result = await employees.createEmployee({ fullName: 'Test Person', companyEmail: ' WORK@EXAMPLE.COM ', personalEmail: 'personal@example.com', role: 'tech_lead' });
   assert.deepEqual(result.emailDelivery, { status: 'accepted', recipient: 'work@example.com' });
+  assert.deepEqual(result.onboardingNotifications, { status: 'accepted', recipients: [], failed: [] });
+});
+
+test('onboarding notifications go to all active employee-facing roles', async (t) => {
+  configure(t);
+  database(t, [
+    { email: 'employee@example.com' },
+    { email: 'techlead@example.com' },
+    { email: 'hr@example.com' },
+    { email: 'manager@example.com' },
+  ]);
+  const sentTo = [];
+  t.mock.method(nodemailer, 'createTransport', () => ({
+    close() {},
+    sendMail: async (message) => {
+      sentTo.push(message.to);
+      return { accepted: [message.to] };
+    },
+  }));
+
+  const result = await employees.createEmployee({ fullName: 'Test Person', companyEmail: 'new@example.com' });
+
+  assert.deepEqual(result.onboardingNotifications, {
+    status: 'accepted',
+    recipients: [
+      'employee@example.com',
+      'techlead@example.com',
+      'hr@example.com',
+      'manager@example.com',
+    ],
+    failed: [],
+  });
+  assert.deepEqual(sentTo, [
+    'new@example.com',
+    'employee@example.com',
+    'techlead@example.com',
+    'hr@example.com',
+    'manager@example.com',
+  ]);
 });
 
 test('SMTP failure and rejected recipients do not produce a false email success', async (t) => {
@@ -44,6 +84,7 @@ test('SMTP failure and rejected recipients do not produce a false email success'
   const transport = t.mock.method(nodemailer, 'createTransport', () => ({ close() {}, sendMail: async () => { throw new Error('SMTP rejected authentication'); } }));
   let result = await employees.createEmployee({ fullName: 'Test Person', companyEmail: 'work@example.com' });
   assert.equal(result.emailDelivery.status, 'failed');
+  assert.equal(result.onboardingNotifications.status, 'accepted');
   assert.ok(result.employee);
   transport.mock.mockImplementation(() => ({ close() {}, sendMail: async () => ({ accepted: [], rejected: ['work@example.com'] }) }));
   result = await employees.createEmployee({ fullName: 'Test Person', companyEmail: 'work@example.com' });
@@ -63,11 +104,16 @@ test('SMTP verification authenticates without sending email and OTP text matches
 });
 
 test('employee response exposes delivery failure while preserving successful account creation', async (t) => {
-  t.mock.method(employees, 'createEmployee', async () => ({ employee: { _id: 'employee' }, emailDelivery: { status: 'failed', recipient: 'work@example.com', message: 'Employee created, but email could not be sent' } }));
+  t.mock.method(employees, 'createEmployee', async () => ({
+    employee: { _id: 'employee' },
+    emailDelivery: { status: 'failed', recipient: 'work@example.com', message: 'Employee created, but email could not be sent' },
+    onboardingNotifications: { status: 'failed', recipients: [], failed: [] },
+  }));
   let status;
   let body;
   await controller.create({ body: {} }, { status(value) { status = value; return this; }, json(value) { body = value; } }, (error) => { throw error; });
   assert.equal(status, 201);
   assert.equal(body.emailDelivery.status, 'failed');
+  assert.equal(body.onboardingNotifications.status, 'failed');
   assert.doesNotMatch(body.message, /email sent/);
 });

@@ -3,10 +3,38 @@ const Employee = require('../../auth/models/employee');
 const User = require('../../auth/models/usermodel');
 const Organization = require('../../organization/models/organization');
 const AccountActivation = require('../../auth/models/account-activation');
-const { sendActivationEmail, ensureMailConfigured } = require('../../../services/mailservice');
+const {
+  sendActivationEmail,
+  sendOnboardingNotification,
+  ensureMailConfigured,
+} = require('../../../services/mailservice');
 const { env } = require('../../../config/env');
 const { resolveDepartment } = require('../../organization/services/departmentservice');
 const { resolveEmploymentType } = require('../../organization/services/employmenttypeservice');
+
+const onboardingNotificationRoles = ['employee', 'tech_lead', 'department_manager', 'hr'];
+
+async function notifyOnboardingRecipients(employeeEmail, employeeName, role) {
+  const recipients = await User.find({
+    email: { $ne: employeeEmail },
+    role: { $in: onboardingNotificationRoles },
+    status: { $ne: 'disabled' },
+  }).select('email').lean();
+
+  const results = await Promise.allSettled(
+    recipients.map(({ email }) => sendOnboardingNotification(email, employeeName, role))
+  );
+  const failed = results
+    .map((result, index) => ({ result, email: recipients[index].email }))
+    .filter(({ result }) => result.status === 'rejected')
+    .map(({ email, result }) => ({ recipient: email, message: result.reason.message }));
+
+  return {
+    status: failed.length === 0 ? 'accepted' : 'partial',
+    recipients: recipients.map(({ email }) => email),
+    failed,
+  };
+}
 
 async function createEmployee(data) {
   const email = data.companyEmail?.toLowerCase().trim();
@@ -67,7 +95,18 @@ async function createEmployee(data) {
     emailDelivery = { status: 'failed', recipient: email, message: 'Employee created, but the activation email could not be sent. Check SMTP settings and the recipient address' };
   }
 
-  return { employee, activationUrl, emailDelivery };
+  let onboardingNotifications;
+  try {
+    onboardingNotifications = await notifyOnboardingRecipients(email, data.fullName, data.role || 'employee');
+  } catch (error) {
+    onboardingNotifications = {
+      status: 'failed',
+      recipients: [],
+      failed: [{ message: error.message }],
+    };
+  }
+
+  return { employee, activationUrl, emailDelivery, onboardingNotifications };
 }
 
 async function listEmployees() {
