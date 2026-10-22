@@ -5,6 +5,7 @@ const { env } = require('../src/config/env');
 const mail = require('../src/services/mailservice');
 const Employee = require('../src/modules/auth/models/employee');
 const User = require('../src/modules/auth/models/usermodel');
+const Organization = require('../src/modules/organization/models/organization');
 const Activation = require('../src/modules/auth/models/account-activation');
 const employees = require('../src/modules/employees/services/employeeservice');
 const controller = require('../src/modules/employees/controllers/employeecontroller');
@@ -17,6 +18,7 @@ function configure(t) {
 function database(t, recipientUsers = []) {
   t.mock.method(User, 'exists', async () => false);
   t.mock.method(User, 'find', () => ({ select: () => ({ lean: async () => recipientUsers }) }));
+  t.mock.method(Organization, 'findOne', async () => null);
   t.mock.method(Employee, 'create', async (data) => ({ _id: 'employee', ...data, save: async () => {} }));
   t.mock.method(User, 'create', async () => ({ _id: 'user' }));
   t.mock.method(Activation, 'create', async () => ({}));
