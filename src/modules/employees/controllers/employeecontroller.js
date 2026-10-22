@@ -22,7 +22,7 @@ async function create(req, res, next) {
       ...(process.env.NODE_ENV !== 'production' && { activationUrl: result.activationUrl }),
     });
   } catch (error) {
-    error.statusCode = 400;
+    error.statusCode = error.statusCode || 400;
     next(error);
   }
 }

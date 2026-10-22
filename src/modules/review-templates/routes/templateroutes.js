@@ -1,0 +1,14 @@
+const express = require('express');
+const controller = require('../controllers/templatecontroller');
+const { authenticate, allowRoles } = require('../../../middleware/auth');
+const router = express.Router();
+router.use(authenticate, allowRoles('hr', 'admin'));
+router.get('/', controller.list);
+router.post('/', controller.create);
+router.get('/:id', controller.get);
+router.patch('/:id', controller.update);
+router.get('/:id/preview', controller.preview);
+router.post('/:id/preview', controller.preview);
+router.post('/:id/snapshots', controller.createSnapshot);
+router.get('/:id/snapshots/:snapshotId', controller.getSnapshot);
+module.exports = router;
