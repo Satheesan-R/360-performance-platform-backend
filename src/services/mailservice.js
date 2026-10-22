@@ -47,6 +47,15 @@ async function sendActivationEmail(email, name, activationUrl) {
   });
 }
 
+async function sendOnboardingNotification(email, employeeName, role) {
+  return deliver({
+    from: env.mailFrom,
+    to: email,
+    subject: 'New employee onboarded',
+    text: employeeName + ' has been onboarded with the role ' + role + '.',
+  });
+}
+
 async function sendOtpEmail(email, otp) {
   return deliver({
     from: env.mailFrom,
@@ -56,4 +65,10 @@ async function sendOtpEmail(email, otp) {
   });
 }
 
-module.exports = { sendActivationEmail, sendOtpEmail, ensureMailConfigured, verifyMailConnection };
+module.exports = {
+  sendActivationEmail,
+  sendOnboardingNotification,
+  sendOtpEmail,
+  ensureMailConfigured,
+  verifyMailConnection,
+};

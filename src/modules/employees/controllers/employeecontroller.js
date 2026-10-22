@@ -17,6 +17,7 @@ async function create(req, res, next) {
         ? 'Employee created. Activation email accepted by the mail server'
         : result.emailDelivery.message,
       emailDelivery: result.emailDelivery,
+      onboardingNotifications: result.onboardingNotifications,
       employee: result.employee,
       ...(process.env.NODE_ENV !== 'production' && { activationUrl: result.activationUrl }),
     });

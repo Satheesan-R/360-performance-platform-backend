@@ -4,6 +4,10 @@ Invitations are sent to the onboarding payload's `companyEmail` (stored as
 workEmail). `personalEmail` is not the invitation destination. The sending account
 is SMTP_USER; this is separate from an HR/admin application's login account.
 The same invitation flow handles employee, tech lead and other assigned roles.
+After an employee is created, a separate notification is sent to every
+non-disabled user whose role is employee, tech_lead, department_manager or hr. The new
+employee is excluded from this fan-out because they already receive the
+activation email.
 
 Configure the ignored local `.env`:
 
@@ -26,13 +30,18 @@ mail. This check does not prove a specific recipient's address is valid or that
 their inbox will accept the message.
 
 `POST /api/employees` returns status 201 after successful employee creation, with
-an emailDelivery object:
+`emailDelivery` and `onboardingNotifications` objects:
 
 ```json
 {
   "message": "Employee created. Activation email accepted by the mail server",
   "employee": { "_id": "..." },
-  "emailDelivery": { "status": "accepted", "recipient": "employee@example.com" }
+  "emailDelivery": { "status": "accepted", "recipient": "employee@example.com" },
+  "onboardingNotifications": {
+    "status": "accepted",
+    "recipients": ["hr@example.com"],
+    "failed": []
+  }
 }
 ```
 
@@ -40,6 +49,10 @@ Accepted means SMTP accepted the recipient, not confirmed inbox delivery. Check
 the returned recipient, the recipient's Spam/Junk folder, and the sender's mailbox
 for delivery failure notices. A valid SMTP login alone does not resolve these
 delivery issues. Only the mail provider can confirm subsequent delivery.
+
+`onboardingNotifications.status` is `accepted` when all matching recipients
+were accepted, `partial` when at least one notification failed, and `failed`
+when the recipient lookup or notification process could not be completed.
 
 If SMTP fails or rejects the recipient after account creation, status remains 201
 because the employee is already saved, but emailDelivery.status is failed and the
