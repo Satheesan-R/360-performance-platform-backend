@@ -89,16 +89,16 @@ test('rejects missing or inactive departments for new assignments', async (t) =>
   await assert.rejects(service.resolveDepartment('507f1f77bcf86cd799439011'), { statusCode: 400 });
 });
 
-test('department assignment updates ID and legacy name; null removes both', async (t) => {
+test('department assignment updates ID; null removes the assignment', async (t) => {
   const employee = { save: async () => {}, populate: async () => employee };
   t.mock.method(Employee, 'findById', async () => employee);
   t.mock.method(Department, 'findById', async () => ({ _id: '507f1f77bcf86cd799439011', name: 'Engineering', status: 'active' }));
   await service.assignDepartment('507f1f77bcf86cd799439012', { departmentId: '507f1f77bcf86cd799439011' });
   assert.equal(employee.departmentId, '507f1f77bcf86cd799439011');
-  assert.equal(employee.department, 'Engineering');
+  assert.equal(employee.department, undefined);
   await service.assignDepartment('507f1f77bcf86cd799439012', { departmentId: null });
   assert.equal(employee.departmentId, null);
-  assert.equal(employee.department, '');
+  assert.equal(employee.department, undefined);
   await assert.rejects(service.assignDepartment('507f1f77bcf86cd799439012', { departmentId: null, role: 'admin' }), { statusCode: 400 });
 });
 

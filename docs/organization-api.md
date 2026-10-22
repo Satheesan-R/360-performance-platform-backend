@@ -84,9 +84,9 @@ existing employees and its head. There is no delete endpoint.
 ## Employee integration and existing records
 
 New onboarding requests to `POST /api/employees` can include `departmentId`.
-The department must exist and be active. When an ID is supplied, it determines
-the legacy `department` name even if that name is also supplied in the request.
-Existing requests with just the string `department` continue to work.
+The department must exist and be active. Employee records store only the
+`departmentId` reference; clients should use the populated department name for
+display.
 
 `PATCH /api/employees/:id/department` accepts:
 
@@ -97,9 +97,8 @@ Existing requests with just the string `department` continue to work.
 Send `{ "departmentId": null }` to clear the assignment. The response is
 `{ "employee": { ... } }`. Employee listing and this assignment response populate
 `departmentId` with the department's `_id`, `name`, `code`, and `status`.
-The old `department` string remains available for the current frontend. After a
-department rename, use populated `departmentId.name` as the current display name;
-the legacy string is not automatically rewritten for every employee.
+After a department rename, use populated `departmentId.name` as the current
+display name.
 
 Existing string assignments are not automatically migrated or guessed. Create
 the matching departments, inspect employees, then explicitly assign each employee
@@ -178,7 +177,7 @@ permissions are future milestones.
 
 Relationships live in `employees.managerId`, referencing another Employee. No
 separate hierarchy collection is used. Nodes include employeeNumber, firstName,
-lastName, jobTitle, departmentId, teamId, managerId, and the legacy text fields.
+lastName, jobTitle, departmentId, teamId, and managerId.
 Department and team are populated with name/code/status; manager is populated
 with firstName/lastName/employeeNumber/jobTitle. Use managerId._id to draw edges.
 The frontend owns organization chart rendering and manager selection.
@@ -189,9 +188,8 @@ onboarding records automatically receive the configured company ID. For this
 single-company application, existing employees with missing/null organizationId
 are treated as belonging to the company. An assignment fills organizationId on
 the employee and selected manager if missing. Explicit other-company IDs are
-never accepted. Old text manager names are not guessed or migrated; HR must
-assign them explicitly. The text manager field remains transitional; use managerId
-for current reporting and future manager-reviewer selection.
+never accepted. Manager assignment uses `managerId` directly; manager names come
+from the populated employee reference.
 
 Manager updates use MongoDB transactions and a shared organization write to
 serialize concurrent hierarchy edits, preventing simultaneous requests from
@@ -241,15 +239,13 @@ and unique within the company. Deactivation preserves employee references but
 rejects new assignments. These endpoints require HR/admin access and company setup.
 They use the same pagination, literal search, and error conventions as Teams.
 
-`POST /api/employees` now accepts `employmentTypeId`; it takes precedence over the
-legacy string. `PATCH /api/employees/:id/employment-type` accepts only
+`POST /api/employees` accepts `employmentTypeId`. `PATCH /api/employees/:id/employment-type` accepts only
 `{ "employmentTypeId": "<id>" }` and assigns an existing active classification.
 Employee listing and assignment responses populate that reference with name,
 code, and isActive. Existing employees are not automatically migrated; use this
 PATCH endpoint after reviewing their classifications. Renaming labels preserves
-IDs; display the populated name. Legacy strings remain supported, with starter
-codes mapped to intern, probation, and full-time; custom codes use lowercase.
-The legacy string is transitional; future review routing must use employmentTypeId.
+IDs; display the populated name. Employee records store only the
+`employmentTypeId` reference.
 
 Workflow execution, default workflow selection, and optional review cycle types
 are deferred until those modules exist. There are no hard-coded review policies.

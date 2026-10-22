@@ -4,7 +4,6 @@ const Employee = require('../../auth/models/employee');
 const { fail, objectId, fields, pagination } = require('./validation');
 
 const allowed = ['name', 'code', 'description', 'isActive'];
-const legacyValues = { INTERN: 'intern', PROBATION: 'probation', PERMANENT: 'full-time' };
 const defaults = [
   { name: 'Intern', code: 'INTERN', description: 'Employees on an internship' },
   { name: 'Probationary', code: 'PROBATION', description: 'Employees on probation' },
@@ -92,8 +91,6 @@ async function resolveEmploymentType(id) {
   return type;
 }
 
-function legacyValue(type) { return legacyValues[type.code] || type.code.toLowerCase(); }
-
 async function assignEmploymentType(employeeId, body) {
   objectId(employeeId, 'employeeId');
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'employmentTypeId')) {
@@ -103,9 +100,8 @@ async function assignEmploymentType(employeeId, body) {
   const employee = await Employee.findById(employeeId);
   if (!employee) fail('Employee was not found', 404);
   employee.employmentTypeId = type._id;
-  employee.employmentType = legacyValue(type);
   await employee.save();
   return employee.populate('employmentTypeId', 'name code isActive');
 }
 
-module.exports = { createEmploymentType, updateEmploymentType, listEmploymentTypes, initializeDefaults, resolveEmploymentType, assignEmploymentType, legacyValue };
+module.exports = { createEmploymentType, updateEmploymentType, listEmploymentTypes, initializeDefaults, resolveEmploymentType, assignEmploymentType };
