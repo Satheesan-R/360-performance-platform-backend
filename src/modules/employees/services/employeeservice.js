@@ -3,7 +3,7 @@ const Employee = require('../../auth/models/employee');
 const User = require('../../auth/models/usermodel');
 const Organization = require('../../organization/models/organization');
 const AccountActivation = require('../../auth/models/account-activation');
-const { sendActivationEmail } = require('../../../services/mailservice');
+const { sendActivationEmail, ensureMailConfigured } = require('../../../services/mailservice');
 const { env } = require('../../../config/env');
 const { resolveDepartment } = require('../../organization/services/departmentservice');
 const { resolveEmploymentType } = require('../../organization/services/employmenttypeservice');
@@ -13,6 +13,8 @@ async function createEmployee(data) {
   if (!data.fullName || !email) {
     throw new Error('Full name and company email are required');
   }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Company email must be a valid recipient email address');
+  ensureMailConfigured();
 
   if (await User.exists({ email })) throw new Error('A user with this email already exists');
 
@@ -57,9 +59,15 @@ async function createEmployee(data) {
   });
 
   const activationUrl = env.frontendUrl + '/activate-account?token=' + token;
-  await sendActivationEmail(email, data.fullName, activationUrl);
+  let emailDelivery;
+  try {
+    emailDelivery = await sendActivationEmail(email, data.fullName, activationUrl);
+  } catch {
+    // The employee already exists. Report delivery separately to avoid duplicate retries.
+    emailDelivery = { status: 'failed', recipient: email, message: 'Employee created, but the activation email could not be sent. Check SMTP settings and the recipient address' };
+  }
 
-  return { employee, activationUrl };
+  return { employee, activationUrl, emailDelivery };
 }
 
 async function listEmployees() {
