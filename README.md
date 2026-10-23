@@ -4,4 +4,6 @@ Single-company Express and MongoDB backend.
 
 Organization Overview and Departments API: [contract and integration guide](docs/organization-api.md).
 
+Department → Team → Employee views: [frontend API handoff](docs/department-team-views.md).
+
 Run `npm test` for validation, department assignment, summary, and API access checks.
