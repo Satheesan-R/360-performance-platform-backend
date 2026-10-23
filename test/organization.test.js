@@ -121,10 +121,12 @@ test('lists paginated departments with literal search and assignment counts', as
   t.mock.method(Department, 'find', (value) => { filter = value; return query; });
   t.mock.method(Department, 'countDocuments', async () => 12);
   t.mock.method(Employee, 'aggregate', async () => [{ _id: 'department-1', count: 3 }]);
+  t.mock.method(Team, 'aggregate', async () => [{ _id: 'department-1', count: 2 }]);
   const result = await service.listDepartments({ search: 'a.*', status: 'active', page: '2', limit: '10' });
   assert.equal(filter.$or[0].name.$regex, 'a\\.\\*');
   assert.equal(filter.status, 'active');
   assert.deepEqual(result.departments.map((department) => department.employeeCount), [3, 0]);
+  assert.deepEqual(result.departments.map((department) => department.teamCount), [2, 0]);
   assert.deepEqual(result.pagination, { page: 2, limit: 10, total: 12, totalPages: 2 });
 });
 

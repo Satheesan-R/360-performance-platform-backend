@@ -79,7 +79,8 @@ When selected, `headEmployeeId` is populated with `_id`, `employeeNumber`,
 `firstName`, `lastName`, and `workEmail`. Search matches name or code literally,
 without treating input as a regular expression. Page starts at 1; limit is 1–100.
 PATCH accepts any subset of create fields. Deactivating a department retains
-existing employees and its head. There is no delete endpoint.
+existing employees and its head. DELETE /api/departments/:id now performs the
+same non-destructive deactivation; it does not remove the department record.
 
 ## Employee integration and existing records
 
@@ -139,7 +140,8 @@ employment types, and role definitions all require an `organizationId` reference
 Team, employment-type, and role-definition models are available, with unique
 codes per organization. Team management endpoints are available as described below.
 Employment-type management endpoints are available as described below. Role-definition
-management endpoints and employee team integration are not yet implemented.
+management endpoints are not yet implemented. Employee team assignment is
+available through PATCH /api/employees/:id/team.
 Role definitions currently store permission strings; login
 and route authorization still enforce the existing fixed user roles. `MANAGER`
 and the label `HOD` do not automatically become login roles. Permission strings
@@ -161,8 +163,9 @@ Description is limited to 2000 characters, logo URL to 2048, other text to 200.
 Run `npm test`. Tests use mocked model operations and local HTTP requests;
 they do not connect to MongoDB or send email. Before deployment, verify setup,
 department creation, uniqueness indexes, assignment, and counts against a test
-MongoDB database. Frontend pages, employee team membership, and configurable
-permissions are future milestones.
+MongoDB database. Frontend pages and configurable permissions are future milestones.
+See the [department and team views guide](department-team-views.md) for detail,
+employee membership, hierarchy, and safe deactivation endpoints.
 
 ## Reporting hierarchy
 
@@ -202,7 +205,7 @@ invalid/circular/cross-organization assignments return 400, and a broken ancesto
 chain with a missing employee returns 409.
 
 The optional employee teamId reference is now available for display, but team
-membership assignment is not implemented here. Hierarchy is based on reporting
+membership assignment is available through the structure APIs. Hierarchy is based on reporting
 relationships, not inferred from department heads, team leads, or access roles.
 
 ## Employment types
@@ -286,6 +289,7 @@ relationships return 400, and missing company setup or duplicate codes return 40
 
 Deactivation keeps the team and its relationships. Existing teams remain editable
 when their department becomes inactive, but cannot be moved into an inactive
-department or reactivated under one. This API does not assign employee members;
-there is no employee teamId field or member count yet. Use these endpoints for
+department or reactivated under one. Team rows now include employeeCount, and
+members are assigned with PATCH /api/employees/:id/team. See the separate
+[department/team detail guide](department-team-views.md). Use these endpoints for
 the frontend `/hr/organization/teams` page.
