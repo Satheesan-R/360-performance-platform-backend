@@ -2,8 +2,12 @@
 
 Single-company Express and MongoDB backend.
 
+Initial admin login: [setup instructions](docs/admin-setup.md) (`npm run create:admin`).
+
 Organization Overview and Departments API: [contract and integration guide](docs/organization-api.md).
 
-Department → Team → Employee views: [frontend API handoff](docs/department-team-views.md).
+Performance Framework, criteria, scoring, and snapshots: [API and frontend integration guide](docs/performance-framework-api.md).
+
+Review Templates: [API, preview, and snapshot guide](docs/review-templates-api.md).
 
 Run `npm test` for validation, department assignment, summary, and API access checks.

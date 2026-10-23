@@ -7,6 +7,7 @@ const app = require('../src/app');
 const Department = require('../src/modules/organization/models/department');
 const Employee = require('../src/modules/auth/models/employee');
 const Organization = require('../src/modules/organization/models/organization');
+const Framework = require('../src/modules/performance-framework/models/performanceframework');
 const Team = require('../src/modules/organization/models/team');
 const EmploymentType = require('../src/modules/organization/models/employmenttype');
 const RoleDefinition = require('../src/modules/organization/models/roledefinition');
@@ -139,12 +140,13 @@ test('requires company name and code on initial organization setup', async (t) =
   assert.equal(create.mock.callCount(), 1);
 });
 
-test('organization summary uses stored counts and marks unavailable modules', async (t) => {
+test('organization summary uses stored counts including active frameworks', async (t) => {
   t.mock.method(Employee, 'countDocuments', async () => 25);
   t.mock.method(Department, 'countDocuments', async (filter) => filter.status ? 2 : 3);
   t.mock.method(Team, 'countDocuments', async () => 4);
+  t.mock.method(Framework, 'countDocuments', async (filter) => { assert.deepEqual(filter, { status: 'active' }); return 2; });
   assert.deepEqual(await organizationService.getSummary(), {
-    totalEmployees: 25, departments: 3, activeDepartments: 2, teams: 4, activeReviewFrameworks: null,
+    totalEmployees: 25, departments: 3, activeDepartments: 2, teams: 4, activeReviewFrameworks: 2,
   });
 });
 
