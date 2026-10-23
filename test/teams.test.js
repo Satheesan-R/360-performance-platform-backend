@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 process.env.JWT_SECRET = 'teams-test-secret';
 const app = require('../src/app');
 const Organization = require('../src/modules/organization/models/organization');
@@ -14,6 +15,8 @@ const teamId = '507f1f77bcf86cd799439013';
 
 function mockCompany(t) {
   t.mock.method(Organization, 'findOne', async () => ({ _id: organizationId }));
+  t.mock.method(mongoose.connection, 'transaction', async (operation) => operation({}));
+  t.mock.method(Organization, 'findOneAndUpdate', async () => ({ _id: organizationId }));
 }
 
 test('team creation validates fields, company, department and lead', async (t) => {
@@ -42,7 +45,7 @@ test('team creation validates fields, company, department and lead', async (t) =
 test('team updates allow deactivation but reject reactivation under inactive departments', async (t) => {
   mockCompany(t);
   const team = { departmentId, status: 'active', teamLeadEmployeeId: teamId, save: async () => {}, populate: async () => team };
-  const lookup = t.mock.method(Team, 'findOne', async () => team);
+  const lookup = t.mock.method(Team, 'findOne', () => ({ session: async () => team, populate: async () => team }));
   t.mock.method(Department, 'findById', async () => ({ organizationId, status: 'inactive' }));
   await service.updateTeam(teamId, { status: 'inactive', teamLeadEmployeeId: null });
   assert.equal(team.status, 'inactive');
@@ -50,7 +53,7 @@ test('team updates allow deactivation but reject reactivation under inactive dep
   await assert.rejects(service.updateTeam(teamId, { status: 'active' }), { statusCode: 400 });
   await assert.rejects(service.updateTeam(teamId, {}), { statusCode: 400 });
   await assert.rejects(service.updateTeam('bad', { name: 'Frontend' }), { statusCode: 400 });
-  lookup.mock.mockImplementation(async () => null);
+  lookup.mock.mockImplementation(() => ({ session: async () => null }));
   await assert.rejects(service.updateTeam(teamId, { name: 'Frontend' }), { statusCode: 404 });
 });
 
@@ -64,6 +67,7 @@ test('team listing scopes company, filters department and escapes search', async
   };
   t.mock.method(Team, 'find', (value) => { filter = value; return query; });
   t.mock.method(Team, 'countDocuments', async () => 11);
+  t.mock.method(Employee, 'aggregate', async () => []);
   const result = await service.listTeams({ page: '2', limit: '10', departmentId, status: 'active', search: 'a.*' });
   assert.equal(filter.organizationId, organizationId);
   assert.equal(filter.departmentId, departmentId);
@@ -78,11 +82,12 @@ test('Teams HTTP routes enforce access and support list, create, update and conf
   mockCompany(t);
   const team = { _id: teamId, organizationId, name: 'Frontend', departmentId, status: 'active', save: async () => {}, populate: async () => ({ _id: teamId, name: team.name }) };
   t.mock.method(Department, 'findById', async () => ({ organizationId, status: 'active' }));
-  t.mock.method(Team, 'findOne', async () => team);
+  t.mock.method(Team, 'findOne', () => ({ session: async () => team, populate: async () => team }));
   const create = t.mock.method(Team, 'create', async () => team);
   const chain = { sort() { return this; }, skip() { return this; }, limit() { return this; }, populate() { return this; }, lean: async () => [{ _id: teamId, name: 'Frontend' }] };
   t.mock.method(Team, 'find', () => chain);
   t.mock.method(Team, 'countDocuments', async () => 1);
+  t.mock.method(Employee, 'aggregate', async () => []);
   const server = await new Promise((resolve) => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const request = (method, path, role, body) => fetch(`http://127.0.0.1:${server.address().port}${path}`, {
