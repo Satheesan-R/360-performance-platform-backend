@@ -3,6 +3,9 @@ const departmentService = require('../services/departmentservice');
 const teamService = require('../services/teamservice');
 const employmentTypeService = require('../services/employmenttypeservice');
 const hierarchyService = require('../services/hierarchyservice');
+const structure = require('../services/structurequeries');
+const assignments = require('../services/structureassignments');
+const { departmentHierarchy } = require('../services/departmenthierarchy');
 
 const handle = (operation, key, status = 200) => async (req, res, next) => {
   try {
@@ -18,7 +21,20 @@ module.exports = {
   departments: handle((req) => departmentService.listDepartments(req.query)),
   createDepartment: handle((req) => departmentService.createDepartment(req.body), 'department', 201),
   updateDepartment: handle((req) => departmentService.updateDepartment(req.params.id, req.body), 'department'),
-  assignDepartment: handle((req) => departmentService.assignDepartment(req.params.id, req.body), 'employee'),
+  assignDepartment: handle((req) => assignments.assignDepartment(req.params.id, req.body), 'employee'),
+  assignTeam: handle((req) => assignments.assignTeam(req.params.id, req.body), 'employee'),
+  departmentDetails: handle((req) => structure.getDepartment(req.params.id), 'department'),
+  departmentSummary: handle(() => departmentService.departmentSummary(), 'summary'),
+  departmentEmployees: handle((req) => structure.departmentEmployees(req.params.id, req.query)),
+  departmentHierarchy: handle((req) => departmentHierarchy(req.params.id)),
+  departmentTeams: handle(async (req) => {
+    await structure.getDepartment(req.params.id);
+
+    return teamService.listTeams({ ...req.query, departmentId: req.params.id });
+  }),
+  deactivateDepartment: handle((req) => departmentService.updateDepartment(req.params.id, { status: 'inactive' }), 'department'),
+  teamDetails: handle((req) => structure.getTeam(req.params.id), 'team'),
+  teamEmployees: handle((req) => structure.teamEmployees(req.params.id, req.query)),
   teams: handle((req) => teamService.listTeams(req.query)),
   createTeam: handle((req) => teamService.createTeam(req.body), 'team', 201),
   updateTeam: handle((req) => teamService.updateTeam(req.params.id, req.body), 'team'),
