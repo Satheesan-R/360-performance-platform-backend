@@ -27,4 +27,13 @@ async function create(req, res, next) {
   }
 }
 
-module.exports = { create, list };
+async function get(req, res, next) {
+  try {
+    const employee = await employeeService.getEmployee(req.params.id);
+    res.json({ employee });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { create, list, get };

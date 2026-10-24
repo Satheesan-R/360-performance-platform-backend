@@ -11,6 +11,25 @@ const {
 const { env } = require('../../../config/env');
 const { resolveDepartment } = require('../../organization/services/departmentservice');
 const { resolveEmploymentType } = require('../../organization/services/employmenttypeservice');
+const { objectId, fail } = require('../../organization/services/validation');
+
+const employeeRelations = [
+  { path: 'user', select: 'email role status' },
+  { path: 'departmentId', select: 'name code status' },
+  { path: 'employmentTypeId', select: 'name code isActive' },
+  { path: 'managerId', select: 'firstName lastName employeeNumber jobTitle' },
+  { path: 'teamId', select: 'name code status' },
+];
+
+function employeeDetails(employee) {
+  return {
+    ...employee,
+    role: employee.user?.role ?? null,
+    onboardingStatus: employee.user?.status === 'active'
+      ? 'completed'
+      : employee.onboardingStatus,
+  };
+}
 
 const onboardingNotificationRoles = ['employee', 'tech_lead', 'department_manager', 'hr'];
 
@@ -112,20 +131,25 @@ async function createEmployee(data) {
 async function listEmployees() {
   const employees = await Employee.find({})
     .sort({ createdAt: -1, _id: -1 })
-    .populate('user', 'email role status')
-    .populate('departmentId', 'name code status')
-    .populate('employmentTypeId', 'name code isActive')
-    .populate('managerId', 'firstName lastName employeeNumber jobTitle')
-    .populate('teamId', 'name code status')
+    .populate(employeeRelations)
     .lean();
 
   // Accounts activated before onboarding status was synchronized are complete too.
-  return employees.map((employee) => ({
-    ...employee,
-    onboardingStatus: employee.user?.status === 'active'
-      ? 'completed'
-      : employee.onboardingStatus,
-  }));
+  return employees.map(employeeDetails);
 }
 
-module.exports = { createEmployee, listEmployees };
+async function getEmployee(id) {
+  objectId(id, 'employeeId');
+
+  const employee = await Employee.findById(id)
+    .populate(employeeRelations)
+    .lean();
+
+  if (!employee) {
+    fail('Employee was not found', 404);
+  }
+
+  return employeeDetails(employee);
+}
+
+module.exports = { createEmployee, listEmployees, getEmployee };
