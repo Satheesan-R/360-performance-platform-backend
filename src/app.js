@@ -10,6 +10,7 @@ const employmentTypeRoutes = require('./modules/organization/routes/employmentty
 const hierarchyRoutes = require('./modules/organization/routes/hierarchyroutes');
 const frameworkRoutes = require('./modules/performance-framework/routes/frameworkroutes');
 const templateRoutes = require('./modules/review-templates/routes/templateroutes');
+const cycleRoutes = require('./modules/review-cycles/routes/cycleroutes');
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use('/api/employment-types', employmentTypeRoutes);
 app.use('/api/hierarchy', hierarchyRoutes);
 app.use('/api/performance-frameworks', frameworkRoutes);
 app.use('/api/review-templates', templateRoutes);
+app.use('/api/review-cycles', cycleRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });

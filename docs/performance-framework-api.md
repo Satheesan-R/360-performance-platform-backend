@@ -226,7 +226,7 @@ Scales are exactly 1–3, 1–4, or 1–5, with min 1 and one uniquely valued le
 every integer through max. Labels must be non-empty text up to 200 characters.
 Levels are sorted by value. The API does not hard-code their meanings.
 
-Enabled reviewers must be a non-empty unique subset of self, peer, manager.
+Enabled reviewers must be a non-empty unique subset of self, peer, tech_lead, manager.
 Every enabled reviewer needs positive weight; disabled reviewers need zero weight.
 To disable peer review, save both blocks together, for example:
 
@@ -241,6 +241,29 @@ There is no automatic redistribution. Archived scoring cannot be edited until th
 framework is returned to draft. Active scoring edits must leave all settings and
 criteria valid. Existing active frameworks without scoring should be returned to
 draft and configured; they are not automatically changed in MongoDB.
+
+### Team Lead Review
+
+Use `tech_lead` as the Team Lead reviewer key in enabledReviewers, reviewerWeights
+and preview reviewerRatings. The existing scoring endpoint is unchanged. Example:
+
+```json
+{
+  "enabledReviewers": ["self", "tech_lead", "manager"],
+  "reviewerWeights": { "self": 20, "peer": 0, "tech_lead": 30, "manager": 50 }
+}
+```
+
+All four reviewer weights share the same 100% budget. Team Lead needs a positive
+weight when enabled and zero when disabled. Send the complete reviewerWeights
+block when changing the split. Older requests and snapshots that omit tech_lead
+treat it as zero; existing saved snapshots are not rewritten and reviewer types
+are not automatically enabled. Newly saved weight blocks include tech_lead.
+
+Frontend should label this field Team Lead Review and submit the tech_lead key.
+Preview expects its ratings only when enabled, using the same criterion-ID map
+as other reviewers. Reviewer assignment/workflow execution is still a future
+module; this change configures the weight, not which employee submits the review.
 
 ### How the weights interact
 

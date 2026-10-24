@@ -7,8 +7,13 @@ const Template = require('../src/modules/review-templates/models/reviewtemplate'
 const Snapshot = require('../src/modules/review-templates/models/templatesnapshot');
 const Framework = require('../src/modules/performance-framework/models/performanceframework');
 const Organization = require('../src/modules/organization/models/organization');
+const Department = require('../src/modules/organization/models/department');
 const EmploymentType = require('../src/modules/organization/models/employmenttype');
 const User = require('../src/modules/auth/models/usermodel');
+const Employee = require('../src/modules/auth/models/employee');
+const Cycle = require('../src/modules/review-cycles/models/reviewcycle');
+const approvals = require('../src/modules/review-templates/services/templateapproval');
+const cycles = require('../src/modules/review-cycles/services/cycleservice');
 const service = require('../src/modules/review-templates/services/templateservice');
 const { previewTemplate } = require('../src/modules/review-templates/services/templatepreview');
 const snapshots = require('../src/modules/review-templates/services/templatesnapshotservice');
@@ -197,17 +202,154 @@ test('template lists support status, framework, targeting, search and pagination
   const chain = { select(value) { assert.equal(value, '-frameworkSnapshot'); return this; }, sort() { return this; }, skip(value) { assert.equal(value, 10); return this; }, limit() { return this; }, populate() { return this; }, lean: async () => [] };
   t.mock.method(Template, 'find', (value) => { filter = value; return chain; });
   t.mock.method(Template, 'countDocuments', async () => 12);
-  const result = await service.listTemplates({ page: '2', limit: '10', search: 'a.*', status: 'draft', frameworkId: fw, employmentTypeId: type });
+  const result = await service.listTemplates({ page: '2', limit: '10', search: 'a.*', status: 'draft', approvalStatus: 'pending', frameworkId: fw, employmentTypeId: type });
   assert.equal(filter.organizationId, org); assert.equal(filter.frameworkId, fw); assert.equal(filter.employmentTypeIds, type);
+  assert.equal(filter.approvalStatus, 'pending');
   assert.equal(filter.$or[0].name.$regex, 'a\\.\\*');
   assert.deepEqual(result.pagination, { page: 2, limit: 10, total: 12, totalPages: 2 });
   await assert.rejects(service.listTemplates({ status: 'deleted' }), { statusCode: 400 });
+});
+
+test('HR configuration targets department managers and validates selected departments', async (t) => {
+  const state = setup(t);
+  const departmentId = '507f1f77bcf86cd799439019';
+  const lookup = t.mock.method(Department, 'countDocuments', async (filter) => {
+    assert.equal(filter.organizationId, org);
+    assert.equal(filter.status, 'active');
+    assert.deepEqual(filter._id.$in, [departmentId]);
+    return 1;
+  });
+
+  const created = await service.createTemplate({
+    ...body(),
+    reviewType: 'probation',
+    departmentIds: [departmentId],
+  }, user);
+
+  assert.equal(created.targetRole, 'department_manager');
+  assert.equal(created.reviewType, 'probation');
+  assert.deepEqual(created.departmentIds, [departmentId]);
+
+  const preview = await previewTemplate(id);
+  assert.equal(preview.targetRole, 'department_manager');
+  assert.equal(preview.reviewType, 'probation');
+  assert.deepEqual(preview.departmentIds, [departmentId]);
+
+  lookup.mock.mockImplementation(async () => 0);
+  await assert.rejects(service.updateTemplate(id, { status: 'active' }), { statusCode: 400 });
+  assert.equal((await previewTemplate(id)).validation.ready, false);
+
+  lookup.mock.mockImplementation(async () => 1);
+  await service.updateTemplate(id, { status: 'active' });
+  const snapshot = await snapshots.createSnapshot(id, user);
+  assert.equal(snapshot.configuration.targetRole, 'department_manager');
+  assert.equal(snapshot.configuration.reviewType, 'probation');
+  assert.deepEqual(snapshot.configuration.departmentIds, [departmentId]);
+
+  await service.updateTemplate(id, { departmentIds: [] });
+  assert.deepEqual(state.template.departmentIds, []);
+  assert.deepEqual(snapshot.configuration.departmentIds, [departmentId]);
+});
+
+test('HR template targeting rejects other workflow levels and malformed settings', () => {
+  for (const targetRole of ['employee', 'tech_lead', 'hr', 'admin']) {
+    assert.throws(() => parseTemplate({ targetRole }), /department_manager only/);
+  }
+
+  for (const data of [
+    { reviewType: 'ANNUAL' },
+    { reviewType: 'other' },
+    { departmentIds: ['bad'] },
+    { departmentIds: [id, id] },
+    { departmentIds: null },
+  ]) {
+    assert.throws(() => parseTemplate(data), { statusCode: 400 });
+  }
+
+  assert.deepEqual(parseTemplate({ departmentIds: [], targetRole: 'department_manager' }), {
+    departmentIds: [],
+    targetRole: 'department_manager',
+  });
 });
 
 test('template activation rejects empty sections and incomplete frameworks', () => {
   assert.throws(() => requireTemplateReady({ sections: [] }, framework()), { statusCode: 400 });
   assert.throws(() => requireTemplateReady(body(), { ...framework(), status: 'draft' }), { statusCode: 400 });
   assert.throws(() => requireTemplateReady({ ...body(), sections: [{ title: 'Empty', allowComments: false }] }, framework()), { statusCode: 400 });
+});
+
+test('HR submits, admin approves and HR creates a snapshotted manager-only cycle', async (t) => {
+  const state = setup(t);
+  await service.createTemplate({ ...body(), status: 'active' }, user);
+  const request = {
+    name: 'Manager Annual Review', templateId: id, employeeIds: [technical],
+    startDate: '2026-11-01', endDate: '2026-12-01',
+  };
+  const create = t.mock.method(Cycle, 'create', async (data) => data);
+  await assert.rejects(cycles.createCycle(request, user), { statusCode: 409 });
+  await approvals.submit(id, user, {});
+  assert.equal(state.template.approvalStatus, 'pending');
+  await approvals.decide(id, org, true, { comment: 'Approved by admin' });
+  assert.equal(state.template.approvedBy, org);
+  assert.equal(state.template.approvalStatus, 'approved');
+
+  t.mock.method(Employee, 'find', () => ({ select() { return this; }, lean: async () => [{ _id: technical, employmentTypeId: type, departmentId: null }] }));
+  const accounts = t.mock.method(User, 'countDocuments', async (filter) => {
+    assert.equal(filter.role, 'department_manager');
+    assert.equal(filter.status, 'active');
+    return 1;
+  });
+  const created = await cycles.createCycle(request, user);
+  assert.equal(created.targetRole, 'department_manager');
+  assert.equal(created.status, 'draft');
+  assert.ok(created.templateSnapshotId);
+  assert.equal(created.templateVersion, state.template.__v);
+  assert.equal(create.mock.callCount(), 1);
+  accounts.mock.mockImplementation(async () => 0);
+  await assert.rejects(cycles.createCycle(request, user), /active department_manager/);
+
+  await service.updateTemplate(id, { description: 'New revision' });
+  assert.equal(state.template.approvalStatus, 'not_submitted');
+  assert.equal(state.template.approvedBy, null);
+  await assert.rejects(cycles.createCycle(request, user), { statusCode: 409 });
+  assert.equal(state.snapshots[0].configuration.approvalStatus, 'approved');
+});
+
+test('admin rejection and stale approval attempts cannot authorize a cycle', async (t) => {
+  const state = setup(t);
+  await service.createTemplate({ ...body(), status: 'active' }, user);
+  await approvals.submit(id, user);
+  await approvals.decide(id, org, false, { comment: 'Please revise the evidence requirements' });
+  assert.equal(state.template.approvalStatus, 'rejected');
+  await assert.rejects(approvals.decide(id, org, true), { statusCode: 409 });
+  await approvals.submit(id, user);
+  await assert.rejects(approvals.decide(id, user, true), { statusCode: 403 });
+  await service.updateTemplate(id, { name: 'Edited while pending' });
+  await assert.rejects(approvals.decide(id, org, true), { statusCode: 409 });
+});
+
+test('approval endpoints and cycle creation enforce HR and admin separation', async (t) => {
+  t.mock.method(approvals, 'submit', async () => ({ approvalStatus: 'pending' }));
+  t.mock.method(approvals, 'decide', async () => ({ approvalStatus: 'approved' }));
+  t.mock.method(cycles, 'createCycle', async () => ({ targetRole: 'department_manager' }));
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  for (const [path, allowed, status] of [
+    [`/api/review-templates/${id}/submit-approval`, 'hr', 200],
+    [`/api/review-templates/${id}/approve`, 'admin', 200],
+    [`/api/review-templates/${id}/reject`, 'admin', 200],
+    ['/api/review-cycles', 'hr', 201],
+  ]) {
+    for (const role of ['hr', 'admin', 'department_manager', 'tech_lead', 'employee']) {
+      const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+        method: 'POST', headers: { Authorization: `Bearer ${jwt.sign({ id: user, role }, process.env.JWT_SECRET)}` },
+      });
+      assert.equal(response.status, role === allowed ? status : 403, `${role}: ${path}`);
+    }
+  }
 });
 
 test('Review Templates HTTP APIs enforce access and serve CRUD, previews and snapshots', async (t) => {
@@ -238,4 +380,7 @@ test('Review Templates HTTP APIs enforce access and serve CRUD, previews and sna
   }
   assert.equal((await send('PATCH', `/api/review-templates/${id}`, 'admin', { name: 'Updated' })).status, 200);
   assert.equal((await send('POST', '/api/review-templates', 'hr', { ...body(), createdBy: user })).status, 400);
+  for (const role of ['department_manager', 'tech_lead']) {
+    assert.equal((await send('POST', '/api/review-templates', role, body())).status, 403);
+  }
 });

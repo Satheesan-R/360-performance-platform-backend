@@ -99,6 +99,58 @@ test('scoring saves increment the shared version and previews never write', asyn
   await assert.rejects(scoring.updateScoring(id, { categoryWeights: { technical: 50, behavioral: 50 } }), { statusCode: 409 });
 });
 
+test('Team Lead weights save and contribute separately to the preview score', async (t) => {
+  const { state } = setup(t);
+  const result = await scoring.updateScoring(id, {
+    enabledReviewers: ['self', 'tech_lead', 'manager'],
+    reviewerWeights: { self: 20, peer: 0, tech_lead: 30, manager: 50 },
+  });
+
+  assert.equal(result.validation.ready, true);
+  assert.equal(state.reviewerWeights.tech_lead, 30);
+
+  const ratings = Object.fromEntries([
+    ['self', 1], ['tech_lead', 5], ['manager', 3],
+  ].map(([role, rating]) => [role, { [technical]: rating, [behavioral]: rating, [kpi]: rating }]));
+  const sample = preview(state, ratings).sample;
+
+  assert.ok(Math.abs(sample.score - 3.2) < 1e-10);
+  assert.equal(sample.reviewerScores.tech_lead, 5);
+  assert.ok(Math.abs(sample.normalizedPercent - 55) < 1e-10);
+
+  const snapshot = snapshots.snapshotConfiguration(state);
+  state.reviewerWeights.tech_lead = 0;
+  assert.equal(snapshot.reviewerWeights.tech_lead, 30);
+  assert.ok(Math.abs(preview(snapshot, ratings).sample.score - 3.2) < 1e-10);
+});
+
+test('Team Lead enablement validates positive weights and supports all four reviewer types', async () => {
+  const data = framework();
+  data.reviewerWeights = { self: 10, peer: 10, tech_lead: 20, manager: 60 };
+  data.enabledReviewers = ['self', 'peer', 'tech_lead', 'manager'];
+
+  requireScoringReady(data);
+  await new Framework(data).validate();
+
+  data.enabledReviewers = ['self', 'peer', 'manager'];
+  assert.throws(() => requireScoringReady(data), /Disabled reviewer tech_lead/);
+  data.enabledReviewers.push('tech_lead');
+  data.reviewerWeights = { self: 20, peer: 20, tech_lead: 0, manager: 60 };
+  assert.throws(() => requireScoringReady(data), /Enabled reviewer tech_lead/);
+  assert.throws(() => parseScoring({ reviewerWeights: { self: 20, peer: 20, tech_lead: 10, manager: 60 } }), /total 100/);
+});
+
+test('legacy reviewer settings remain valid and frozen snapshots are not rewritten', () => {
+  const data = framework();
+  const before = JSON.stringify(data);
+
+  requireScoringReady(data);
+  assert.equal(JSON.stringify(data), before);
+  assert.equal(Object.hasOwn(data.reviewerWeights, 'tech_lead'), false);
+  assert.equal(parseScoring({ reviewerWeights: data.reviewerWeights }).reviewerWeights.tech_lead, 0);
+  assert.equal(preview(data).totalEffectiveWeight, 100);
+});
+
 test('activation requires full scoring and archived settings cannot be changed', async (t) => {
   const { state } = setup(t);
   state.ratingScale = null;

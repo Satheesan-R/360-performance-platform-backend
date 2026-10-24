@@ -14,6 +14,12 @@ async function createSnapshot(id, userId, body) {
   const existing = await Snapshot.findOne(filter).lean();
   if (existing) return existing;
   const configuration = JSON.parse(JSON.stringify({ name: template.name, description: template.description || '', frameworkId: template.frameworkId,
+    reviewType: template.reviewType ?? null,
+    departmentIds: template.departmentIds || [],
+    targetRole: template.targetRole ?? null,
+    approvalStatus: template.approvalStatus ?? 'not_submitted',
+    approvedBy: template.approvedBy ?? null,
+    approvedAt: template.approvedAt ?? null,
     employmentTypeIds: template.employmentTypeIds || [], sections: template.sections || [], evidenceRequired: Boolean(template.evidenceRequired),
     frameworkVersion: template.frameworkVersion, framework: template.frameworkSnapshot }));
   try { return await Snapshot.create({ ...filter, configuration, createdBy: userId }); }

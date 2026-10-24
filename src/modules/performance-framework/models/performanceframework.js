@@ -14,7 +14,7 @@ const performanceFrameworkSchema = new mongoose.Schema({
   ratingScale: { type: ratingScaleSchema, default: null },
   categoryWeights: { type: categoryWeightsSchema, default: null },
   reviewerWeights: { type: reviewerWeightsSchema, default: null },
-  enabledReviewers: { type: [{ type: String, enum: ['self', 'peer', 'manager'] }], default: [] },
+  enabledReviewers: { type: [{ type: String, enum: ['self', 'peer', 'tech_lead', 'manager'] }], default: [] },
   status: { type: String, enum: ['draft', 'active', 'archived'], default: 'draft' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, immutable: true },
 }, { timestamps: true, collection: 'performanceFrameworks' });

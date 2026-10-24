@@ -17,6 +17,39 @@ All endpoints require `Authorization: Bearer <token>` and the HR/admin role.
 
 ## Create and edit
 
+The current HR-only configuration stage defines review templates for department
+managers. The intended later hierarchy is HR framework configuration → department
+manager forms for tech leads → tech lead forms for employees. Those later authoring
+levels are not enabled by this change. HR/admin routes remain protected as before.
+
+New templates support these additional fields:
+
+```json
+{
+  "reviewType": "annual",
+  "departmentIds": ["<department id>"],
+  "targetRole": "department_manager"
+}
+```
+
+reviewType accepts annual, probation or internship (default annual on new records).
+targetRole currently accepts only department_manager and defaults to it on new
+records. It identifies the intended review subject's access role, not a job title
+and not the person creating the template. HR/admin are still the authors.
+departmentIds must reference existing active departments in this organization;
+an empty array means no department restriction. Use GET /api/departments with an
+active status filter for the selector. This is reusable targeting configuration,
+not assignment of a particular manager or creation of a review cycle.
+
+Selected departments are validated on creation, targeting changes and activation.
+Draft/proposed-targeting previews report invalid selections through validation.
+Metadata-only edits and unchanged pinned previews preserve prior configuration.
+List supports departmentId (explicit selection) and reviewType filters and
+populates departmentIds with name/code/status. Preview and template snapshots
+include all three fields. Existing records and saved snapshots are not migrated
+or rewritten; old records without the fields show null reviewType/targetRole in
+preview until HR configures them. No manager/tech-lead write permission is added.
+
 Example create body; replace placeholder IDs with real IDs from the selected framework:
 
 ```json
@@ -182,10 +215,14 @@ template's shared __v and cannot modify old snapshots. Framework snapshots and
 template snapshots are separate contracts; the template snapshot includes the
 exact framework configuration it uses, including scoringFormulaVersion.
 
-Review-cycle publication remains a future module. It must persist a template
+HR-only draft cycle creation and admin template approval are available through
+the [review-cycle API](review-cycles-api.md). Active status alone is insufficient:
+the template must also be admin-approved. Review-cycle publication remains a
+future module. It must persist a template
 snapshot ID and use that snapshot's prompts, evidence rules and scoring data for
 the whole cycle. Simply referencing the live template is insufficient. No cycles
-or review responses are created or migrated by these endpoints.
+or review responses are migrated by the template endpoints. Draft cycle records
+are created through the separate review-cycle API.
 
 ## Errors and verification
 

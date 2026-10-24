@@ -1,5 +1,6 @@
 const Framework = require('../../performance-framework/models/performanceframework');
 const EmploymentType = require('../../organization/models/employmenttype');
+const Department = require('../../organization/models/department');
 const { fail } = require('../../organization/services/validation');
 const { requireScoringReady } = require('../../performance-framework/services/scoringvalidation');
 const { effectiveCriteria } = require('../../performance-framework/services/scoringpreview');
@@ -17,6 +18,24 @@ async function validateEmploymentTypes(template, framework) {
   const effective = ids.length ? ids : applicable;
   if (effective.length && await EmploymentType.countDocuments({ _id: { $in: effective }, organizationId: template.organizationId, isActive: true }) !== effective.length) {
     fail('Employment types must exist, be active and belong to this organization');
+  }
+}
+
+async function validateDepartments(template) {
+  const ids = template.departmentIds || [];
+
+  if (!ids.length) {
+    return;
+  }
+
+  const count = await Department.countDocuments({
+    _id: { $in: ids },
+    organizationId: template.organizationId,
+    status: 'active',
+  });
+
+  if (count !== ids.length) {
+    fail('Departments must exist, be active and belong to this organization');
   }
 }
 
@@ -48,4 +67,11 @@ function frameworkForTemplate(template) {
   return { ...template.frameworkSnapshot, _id: template.frameworkId, organizationId: template.organizationId, __v: template.frameworkVersion, status: 'active' };
 }
 
-module.exports = { resolveFramework, validateEmploymentTypes, validateCriteria, requireTemplateReady, frameworkForTemplate };
+module.exports = {
+  resolveFramework,
+  validateEmploymentTypes,
+  validateDepartments,
+  validateCriteria,
+  requireTemplateReady,
+  frameworkForTemplate,
+};

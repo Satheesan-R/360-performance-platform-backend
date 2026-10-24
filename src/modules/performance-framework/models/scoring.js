@@ -10,6 +10,11 @@ const ratingScaleSchema = new mongoose.Schema({
   levels: { type: [levelSchema], required: true },
 }, { _id: false });
 const categoryWeightsSchema = new mongoose.Schema({ technical: percentage, behavioral: percentage }, { _id: false });
-const reviewerWeightsSchema = new mongoose.Schema({ self: percentage, peer: percentage, manager: percentage }, { _id: false });
+const reviewerWeightsSchema = new mongoose.Schema({
+  self: percentage,
+  peer: percentage,
+  tech_lead: { ...percentage, default: 0 },
+  manager: percentage,
+}, { _id: false });
 
 module.exports = { ratingScaleSchema, categoryWeightsSchema, reviewerWeightsSchema };
