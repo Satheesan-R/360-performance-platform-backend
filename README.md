@@ -8,4 +8,6 @@ Performance Framework, criteria, scoring, and snapshots: [API and frontend integ
 
 Review Templates: [API, preview, and snapshot guide](docs/review-templates-api.md).
 
+Admin approval and HR department-manager cycles: [API guide](docs/review-cycles-api.md).
+
 Run `npm test` for validation, department assignment, summary, and API access checks.

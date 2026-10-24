@@ -30,6 +30,7 @@ async function createTemplate(body, userId) {
   const framework = await relations.resolveFramework(candidate);
   if (framework.status === 'archived') fail('Choose a draft or active framework');
   await relations.validateEmploymentTypes(candidate, framework);
+  await relations.validateDepartments(candidate);
   relations.validateCriteria(candidate, framework);
   if (data.status === 'active') {
     relations.requireTemplateReady(candidate, framework);
@@ -53,6 +54,9 @@ async function updateTemplate(id, body) {
   if (status !== 'archived') {
     if (!frozen && framework.status === 'archived') fail('Choose a draft or active framework');
     relations.validateCriteria(candidate, framework);
+    if (Object.hasOwn(data, 'departmentIds') || (status === 'active' && existing.status !== 'active')) {
+      await relations.validateDepartments(candidate);
+    }
     if (Object.hasOwn(data, 'employmentTypeIds') || (status === 'active' && existing.status !== 'active') || switching) await relations.validateEmploymentTypes(candidate, framework);
     if (status === 'active') {
       relations.requireTemplateReady(candidate, framework);
@@ -61,6 +65,15 @@ async function updateTemplate(id, body) {
     }
   }
   if (status === 'draft') { data.frameworkSnapshot = null; data.frameworkVersion = null; }
+  // Approval applies to the exact saved configuration, never a later edit.
+  Object.assign(data, {
+    approvalStatus: 'not_submitted',
+    submittedBy: null,
+    submittedAt: null,
+    approvedBy: null,
+    approvedAt: null,
+    approvalComment: '',
+  });
   const filter = { _id: existing._id, organizationId: existing.organizationId, __v: existing.__v === undefined ? { $exists: false } : existing.__v };
   const updated = await Template.findOneAndUpdate(filter, { $set: data, $inc: { __v: 1 } }, { new: true, runValidators: true }).lean();
   if (!updated) fail('Template changed while saving. Reload and try again', 409);
@@ -75,7 +88,25 @@ async function listTemplates(query) {
     if (!['draft', 'active', 'archived'].includes(query.status)) fail('status must be draft, active or archived');
     filter.status = query.status;
   }
+  if (query.approvalStatus !== undefined) {
+    if (!['not_submitted', 'pending', 'approved', 'rejected'].includes(query.approvalStatus)) {
+      fail('approvalStatus must be not_submitted, pending, approved or rejected');
+    }
+
+    filter.approvalStatus = query.approvalStatus;
+  }
   if (query.frameworkId !== undefined) filter.frameworkId = objectId(query.frameworkId, 'frameworkId');
+  if (query.departmentId !== undefined) {
+    filter.departmentIds = objectId(query.departmentId, 'departmentId');
+  }
+
+  if (query.reviewType !== undefined) {
+    if (!['annual', 'probation', 'internship'].includes(query.reviewType)) {
+      fail('reviewType must be annual, probation or internship');
+    }
+
+    filter.reviewType = query.reviewType;
+  }
   if (query.employmentTypeId !== undefined) filter.employmentTypeIds = objectId(query.employmentTypeId, 'employmentTypeId');
   if (query.search !== undefined) {
     if (typeof query.search !== 'string' || query.search.length > 200) fail('search must be text up to 200 characters');
@@ -84,7 +115,10 @@ async function listTemplates(query) {
   }
   const [templates, total] = await Promise.all([
     Template.find(filter).select('-frameworkSnapshot').sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit)
-      .populate('frameworkId', 'name status').populate('employmentTypeIds', 'name code isActive').lean(),
+      .populate('frameworkId', 'name status')
+      .populate('employmentTypeIds', 'name code isActive')
+      .populate('departmentIds', 'name code status')
+      .lean(),
     Template.countDocuments(filter),
   ]);
   return { templates, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };

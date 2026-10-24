@@ -62,11 +62,41 @@ function sections(value) {
 }
 
 function parseTemplate(body, create = false) {
-  object(body, ['name', 'description', 'frameworkId', 'employmentTypeIds', 'sections', 'evidenceRequired', 'status'], 'template');
+  object(body, [
+    'name',
+    'description',
+    'reviewType',
+    'departmentIds',
+    'targetRole',
+    'frameworkId',
+    'employmentTypeIds',
+    'sections',
+    'evidenceRequired',
+    'status',
+  ], 'template');
   if (!Object.keys(body).length) fail('At least one field is required');
   const data = {};
   if (create || Object.hasOwn(body, 'name')) data.name = text(body.name, 'name', 200, true);
   if (Object.hasOwn(body, 'description')) data.description = text(body.description, 'description', 2000);
+  if (Object.hasOwn(body, 'reviewType')) {
+    if (!['annual', 'probation', 'internship'].includes(body.reviewType)) {
+      fail('reviewType must be annual, probation or internship');
+    }
+
+    data.reviewType = body.reviewType;
+  }
+
+  if (Object.hasOwn(body, 'departmentIds')) {
+    data.departmentIds = ids(body.departmentIds, 'departmentIds');
+  }
+
+  if (Object.hasOwn(body, 'targetRole')) {
+    if (body.targetRole !== 'department_manager') {
+      fail('HR templates currently target department_manager only');
+    }
+
+    data.targetRole = body.targetRole;
+  }
   if (create || Object.hasOwn(body, 'frameworkId')) data.frameworkId = objectId(body.frameworkId, 'frameworkId').toLowerCase();
   if (Object.hasOwn(body, 'employmentTypeIds')) data.employmentTypeIds = ids(body.employmentTypeIds, 'employmentTypeIds');
   if (Object.hasOwn(body, 'sections')) data.sections = sections(body.sections);
