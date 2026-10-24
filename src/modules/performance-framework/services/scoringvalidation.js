@@ -1,6 +1,6 @@
 const { fail } = require('../../organization/services/validation');
 const { requireValidWeights } = require('./criteriavalidation');
-const roles = ['self', 'peer', 'manager'];
+const roles = ['self', 'peer', 'tech_lead', 'manager'];
 const keys = ['ratingScale', 'categoryWeights', 'reviewerWeights', 'enabledReviewers'];
 
 function object(value, allowed, label) {
@@ -13,7 +13,8 @@ function weights(value, names, label) {
   object(value, names, label);
   const result = {};
   for (const name of names) {
-    const weight = value[name];
+    // Older configurations and frozen snapshots have no Team Lead weight.
+    const weight = name === 'tech_lead' && value[name] === undefined ? 0 : value[name];
     if (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 0 || weight > 100) fail(`${label}.${name} must be a number from 0 to 100`);
     result[name] = weight;
   }
@@ -44,7 +45,7 @@ function parseScoring(body, complete = false) {
   if (Object.hasOwn(body, 'categoryWeights')) result.categoryWeights = weights(body.categoryWeights, ['technical', 'behavioral'], 'categoryWeights');
   if (Object.hasOwn(body, 'reviewerWeights')) result.reviewerWeights = weights(body.reviewerWeights, roles, 'reviewerWeights');
   if (Object.hasOwn(body, 'enabledReviewers')) {
-    if (!Array.isArray(body.enabledReviewers) || !body.enabledReviewers.length || body.enabledReviewers.length > 3 || body.enabledReviewers.some((role) => !roles.includes(role)) || new Set(body.enabledReviewers).size !== body.enabledReviewers.length) fail('enabledReviewers must contain unique self, peer or manager roles');
+    if (!Array.isArray(body.enabledReviewers) || !body.enabledReviewers.length || body.enabledReviewers.length > roles.length || body.enabledReviewers.some((role) => !roles.includes(role)) || new Set(body.enabledReviewers).size !== body.enabledReviewers.length) fail('enabledReviewers must contain unique self, peer, tech_lead or manager roles');
     result.enabledReviewers = [...body.enabledReviewers];
   }
   return result;
@@ -57,7 +58,7 @@ function settings(framework) {
 function validateReviewers(framework) {
   if (!framework.reviewerWeights || !framework.enabledReviewers?.length) return;
   for (const role of roles) {
-    const weight = framework.reviewerWeights[role];
+    const weight = role === 'tech_lead' ? framework.reviewerWeights[role] ?? 0 : framework.reviewerWeights[role];
     if (!framework.enabledReviewers.includes(role) && weight !== 0) fail(`Disabled reviewer ${role} must have zero weight`);
     if (framework.enabledReviewers.includes(role) && !(weight > 0)) fail(`Enabled reviewer ${role} must have a positive weight`);
   }
