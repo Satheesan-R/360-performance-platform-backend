@@ -1,80 +1,76 @@
 const User = require('../../auth/models/usermodel');
 const Employee = require('../../auth/models/employee');
 const bcrypt = require('bcryptjs');
-
-const EDITABLE_FIELDS = ['phone', 'address'];
-
-function fail(message, statusCode = 400) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  throw error;
-}
+const preferences = require('./preferences');
+const { fail, fields } = preferences;
+const profileDetails = require('./profile-details');
 
 async function findActiveUser(authUser) {
-  if (!authUser || authUser.purpose || !authUser.id || !authUser.role) fail('Login required', 401);
-
+  if (!authUser || authUser.purpose || !/^[a-f\d]{24}$/i.test(String(authUser.id || '')) || !preferences.LANDING_PAGES[authUser.role]) fail('Login required', 401);
   const user = await User.findById(authUser.id)
-    .select('email role status lastLoginAt employee')
-    .populate('employee', 'employeeNumber firstName lastName workEmail phone address jobTitle department officeLocation')
-    .lean();
-
-  if (!user || user.status !== 'active') fail('Account unavailable', 401);
+    .select('email role status lastLoginAt passwordChangedAt employee preferences profileDetails +passwordHash')
+    .populate({ path: 'employee', select: 'organizationId employeeNumber firstName lastName workEmail phone address jobTitle department departmentId teamId managerId manager', populate: [
+      { path: 'departmentId', select: 'name' }, { path: 'teamId', select: 'name' }, { path: 'managerId', select: 'firstName lastName' },
+    ] }).lean();
+  if (!user || user.status !== 'active' || user.role !== authUser.role) fail('Account unavailable or permissions changed. Please sign in again', 401);
   return user;
 }
-
-async function getProfile(authUser) {
-  const user = await findActiveUser(authUser);
+function profileDto(user) {
+  const employee = user.employee;
   return {
-    id: user._id,
-    email: user.email,
-    role: user.role,
-    lastLoginAt: user.lastLoginAt || null,
-    employee: user.employee || null,
+    id: String(user._id), email: user.email, role: user.role, status: user.status,
+    details: profileDetails.read(user.profileDetails),
+    lastLoginAt: user.lastLoginAt || null, passwordChangedAt: user.passwordChangedAt || null,
+    capabilities: { extendedProfile: true, corrections: Boolean(employee), correctionReview: ['hr', 'admin'].includes(user.role), editableProfileFields: employee ? ['phone', 'address'] : [], passwordChange: Boolean(user.passwordHash), authMethod: user.passwordHash ? 'password' : 'managed', mfa: false, sessions: false },
+    employee: employee ? {
+      _id: String(employee._id), employeeNumber: employee.employeeNumber, firstName: employee.firstName, lastName: employee.lastName,
+      workEmail: employee.workEmail, phone: employee.phone || '', address: employee.address || '', jobTitle: employee.jobTitle || '',
+      department: employee.departmentId?.name || employee.department || '', team: employee.teamId?.name || '',
+      reportingManager: employee.managerId ? [employee.managerId.firstName, employee.managerId.lastName].filter(Boolean).join(' ') : employee.manager || '',
+    } : null,
   };
 }
-
-function validateProfileUpdate(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) fail('A JSON object is required');
-  const keys = Object.keys(body);
-  if (!keys.length) fail('Nothing to update');
-  const unknown = keys.filter((key) => !EDITABLE_FIELDS.includes(key));
-  if (unknown.length) fail(`Unknown fields: ${unknown.join(', ')}`);
-
-  const updates = {};
-  for (const key of keys) {
-    if (typeof body[key] !== 'string') fail(`${key} must be text`);
-    updates[key] = body[key].trim();
-  }
-  if (updates.phone && !/^[0-9+\-\s()]{7,20}$/.test(updates.phone)) fail('phone must be a valid phone number');
-  if (updates.address && updates.address.length > 300) fail('address is too long');
-  return updates;
-}
-
+async function getProfile(authUser) { return profileDto(await findActiveUser(authUser)); }
 async function updateProfile(authUser, body) {
-  const updates = validateProfileUpdate(body);
+  fields(body, ['phone', 'address', 'details']);
+  if ('details' in body) {
+    if (Object.keys(body).length !== 1) fail('Save professional details separately from contact fields');
+    const details = profileDetails.validate(body.details);
+    const user = await findActiveUser(authUser);
+    const result = await User.updateOne({ _id: user._id, status: 'active', role: user.role }, { $set: { profileDetails: details } }, { runValidators: true });
+    if (result.matchedCount === 0) fail('Your account changed during this request. Sign in and try again', 409);
+    return getProfile(authUser);
+  }
+  if (!Object.keys(body).length) fail('Nothing to update');
+  const updates = {};
+  for (const [key, value] of Object.entries(body)) { if (typeof value !== 'string') fail(`${key} must be text`); updates[key] = value.trim(); }
+  if (updates.phone && (!/^\+?[0-9\-\s()]{7,20}$/.test(updates.phone) || updates.phone.replace(/\D/g, '').length < 7 || updates.phone.replace(/\D/g, '').length > 15)) fail('phone must contain 7–15 digits');
+  if (updates.address && updates.address.length > 300) fail('address is too long');
   const user = await findActiveUser(authUser);
   if (!user.employee) fail('No employee profile linked to this account', 404);
-
   await Employee.updateOne({ _id: user.employee._id }, { $set: updates }, { runValidators: true });
   return getProfile(authUser);
 }
-
+async function getPreferences(authUser) { const user = await findActiveUser(authUser); return preferences.read(user.preferences, user.role); }
+async function updatePreferences(authUser, body) {
+  const user = await findActiveUser(authUser);
+  const next = preferences.validate(body, user.role, preferences.read(user.preferences, user.role));
+  const result = await User.updateOne({ _id: user._id, status: 'active', role: user.role }, { $set: { preferences: next } }, { runValidators: true });
+  if (result.matchedCount === 0) fail('Your account changed during this request. Sign in and try again', 409);
+  return next;
+}
 async function changePassword(authUser, body) {
-  if (!authUser || authUser.purpose || !authUser.id || !authUser.role) fail('Login required', 401);
-  const { currentPassword, newPassword } = body || {};
+  fields(body, ['currentPassword', 'newPassword']);
+  const { currentPassword, newPassword } = body;
   if (typeof currentPassword !== 'string' || !currentPassword) fail('currentPassword is required');
   if (typeof newPassword !== 'string' || newPassword.length < 8) fail('newPassword must contain at least 8 characters');
-  if (newPassword.length > 72) fail('newPassword is too long');
+  if (Buffer.byteLength(newPassword, 'utf8') > 72) fail('newPassword must not exceed 72 UTF-8 bytes');
   if (newPassword === currentPassword) fail('newPassword must be different from currentPassword');
-
-  const user = await User.findById(authUser.id).select('+passwordHash status');
-  if (!user || user.status !== 'active') fail('Account unavailable', 401);
-  if (!user.passwordHash || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
-    fail('Current password is incorrect');
-  }
-
-  user.passwordHash = await bcrypt.hash(newPassword, 10);
-  await user.save();
+  const active = await findActiveUser(authUser);
+  if (!active.passwordHash) fail('Password is managed by your identity provider. Contact IT to change it', 403);
+  if (!(await bcrypt.compare(currentPassword, active.passwordHash))) fail('Current password is incorrect');
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  const result = await User.updateOne({ _id: active._id, status: 'active', passwordHash: active.passwordHash }, { $set: { passwordHash, passwordChangedAt: new Date() } });
+  if (result.matchedCount === 0) fail('Your account changed during this request. Sign in and try again', 409);
 }
-
-module.exports = { getProfile, updateProfile, changePassword };
+module.exports = { findActiveUser, profileDto, getProfile, updateProfile, changePassword, getPreferences, updatePreferences };

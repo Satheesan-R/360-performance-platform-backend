@@ -15,6 +15,8 @@ const app = express();
 app.use(cors(
   {  origin: env.frontendUrl, credentials: true }
   ));
+// Cropped photos use a larger body limit only on the authenticated profile endpoint.
+app.use('/api/settings/profile', require('./middleware/auth').authenticate, express.json({ limit: '250kb' }));
 app.use(express.json({ limit: '20kb'}
    ));
 

@@ -1,12 +1,16 @@
 const express = require('express');
 const controller = require('../controllers/settingscontroller');
 const { authenticate } = require('../../../middleware/auth');
-
 const router = express.Router();
 router.use(authenticate);
+router.get('/profiles/:id', controller.sharedProfile);
+router.get('/corrections', controller.listCorrections);
+router.get('/corrections/review', controller.reviewQueue);
+router.post('/corrections', controller.createCorrection);
+router.patch('/corrections/:id', controller.reviewCorrection);
 router.get('/profile', controller.profile);
-router.patch('/password', controller.changePassword);
 router.patch('/profile', controller.updateProfile);
-
+router.patch('/password', controller.changePassword);
+router.get('/preferences', controller.getPreferences);
+router.patch('/preferences', controller.updatePreferences);
 module.exports = router;
-
