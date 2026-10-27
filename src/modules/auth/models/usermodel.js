@@ -34,6 +34,7 @@ const userSchema = new mongoose.Schema(
     profileDetails: { type: require('../../settings/models/profile-details-schema'), default: () => ({}) },
     lastLoginAt: Date,
     passwordChangedAt: Date,
+    sessionVersion: { type: Number, default: 0 },
     preferences: {
       language: { type: String, enum: ['en'], default: 'en' },
       timezone: { type: String, default: 'UTC' },
