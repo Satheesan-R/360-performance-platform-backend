@@ -85,6 +85,7 @@ test('hierarchy response supplies chart roots and searchable employees', async (
 });
 
 test('hierarchy routes enforce access and return employee and chart responses', async (t) => {
+  t.mock.method(require('../src/modules/auth/models/usermodel'), 'findOne', () => ({ select() { return this; }, lean: async () => ({ sessionVersion: 0 }) }));
   t.mock.method(service, 'listHierarchy', async () => ({ employees: [], rootEmployeeIds: [], total: 0 }));
   t.mock.method(service, 'assignManager', async () => ({ _id: a, managerId: b }));
   const server = await new Promise((resolve) => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
@@ -96,7 +97,7 @@ test('hierarchy routes enforce access and return employee and chart responses', 
     ['PATCH', `/api/hierarchy/${a}/manager`, 'employee'],
   ]) {
     for (const role of [null, 'employee', 'hr', 'admin']) {
-      const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, { method, headers: role ? { Authorization: `Bearer ${jwt.sign({ role }, process.env.JWT_SECRET)}` } : {} });
+      const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, { method, headers: role ? { Authorization: `Bearer ${jwt.sign({ id: '507f1f77bcf86cd799439011', role }, process.env.JWT_SECRET)}` } : {} });
       assert.equal(response.status, !role ? 401 : role === 'employee' ? 403 : 200);
       if (['hr', 'admin'].includes(role)) assert.ok(Object.hasOwn(await response.json(), key));
     }

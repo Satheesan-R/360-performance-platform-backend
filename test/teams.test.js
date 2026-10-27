@@ -75,6 +75,7 @@ test('team listing scopes company, filters department and escapes search', async
 });
 
 test('Teams HTTP routes enforce access and support list, create, update and conflicts', async (t) => {
+  t.mock.method(require('../src/modules/auth/models/usermodel'), 'findOne', () => ({ select() { return this; }, lean: async () => ({ sessionVersion: 0 }) }));
   mockCompany(t);
   const team = { _id: teamId, organizationId, name: 'Frontend', departmentId, status: 'active', save: async () => {}, populate: async () => ({ _id: teamId, name: team.name }) };
   t.mock.method(Department, 'findById', async () => ({ organizationId, status: 'active' }));
@@ -86,7 +87,7 @@ test('Teams HTTP routes enforce access and support list, create, update and conf
   const server = await new Promise((resolve) => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const request = (method, path, role, body) => fetch(`http://127.0.0.1:${server.address().port}${path}`, {
-    method, headers: { 'Content-Type': 'application/json', ...(role && { Authorization: `Bearer ${jwt.sign({ role }, process.env.JWT_SECRET)}` }) },
+    method, headers: { 'Content-Type': 'application/json', ...(role && { Authorization: `Bearer ${jwt.sign({ id: '507f1f77bcf86cd799439011', role }, process.env.JWT_SECRET)}` }) },
     ...(body && { body: JSON.stringify(body) }),
   });
   for (const [method, path] of [['GET', '/api/teams'], ['POST', '/api/teams'], ['PATCH', `/api/teams/${teamId}`]]) {

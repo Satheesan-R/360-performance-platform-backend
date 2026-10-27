@@ -94,6 +94,7 @@ test('editing classification preserves employee references and inactive types re
 });
 
 test('employment type routes exist, enforce HR access and return expected responses', async (t) => {
+  t.mock.method(require('../src/modules/auth/models/usermodel'), 'findOne', () => ({ select() { return this; }, lean: async () => ({ sessionVersion: 0 }) }));
   t.mock.method(service, 'listEmploymentTypes', async () => ({ employmentTypes: [], pagination: { total: 0 } }));
   t.mock.method(service, 'createEmploymentType', async () => ({ _id: id, name: 'Intern' }));
   t.mock.method(service, 'updateEmploymentType', async () => ({ _id: id, isActive: false }));
@@ -104,7 +105,7 @@ test('employment type routes exist, enforce HR access and return expected respon
   const paths = [['GET', '/api/employment-types', 200, 'employmentTypes'], ['POST', '/api/employment-types', 201, 'employmentType'], ['PATCH', `/api/employment-types/${id}`, 200, 'employmentType'], ['POST', '/api/employment-types/defaults', 200, 'employmentTypes'], ['PATCH', `/api/employees/${id}/employment-type`, 200, 'employee']];
   for (const [method, path, status, key] of paths) {
     for (const role of [null, 'employee', 'hr', 'admin']) {
-      const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, { method, headers: role ? { Authorization: `Bearer ${jwt.sign({ role }, process.env.JWT_SECRET)}` } : {} });
+      const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, { method, headers: role ? { Authorization: `Bearer ${jwt.sign({ id: '507f1f77bcf86cd799439011', role }, process.env.JWT_SECRET)}` } : {} });
       assert.equal(response.status, !role ? 401 : role === 'employee' ? 403 : status);
       if (['hr', 'admin'].includes(role)) assert.ok(Object.hasOwn(await response.json(), key));
     }

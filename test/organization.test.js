@@ -150,6 +150,7 @@ let server;
 after(async () => { if (server) await new Promise((resolve) => server.close(resolve)); });
 
 test('organization APIs enforce HR/admin access and return validation and conflict errors', async (t) => {
+  t.mock.method(require('../src/modules/auth/models/usermodel'), 'findOne', () => ({ select() { return this; }, lean: async () => ({ sessionVersion: 0 }) }));
   server = await new Promise((resolve) => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const request = async (path, role, method = 'GET', body) => fetch(base + path, {

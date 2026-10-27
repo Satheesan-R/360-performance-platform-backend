@@ -1,4 +1,4 @@
-const { test, after } = require('node:test');
+const { test, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -9,6 +9,9 @@ const Employee = require('../src/modules/auth/models/employee');
 const preferences = require('../src/modules/settings/services/preferences');
 const service = require('../src/modules/settings/services/settingsservice');
 const id = '507f1f77bcf86cd799439011';
+beforeEach(t => {
+  t.mock.method(User, 'findOne', () => ({ select() { return this; }, lean: async () => ({ sessionVersion: 0 }) }));
+});
 const employeeId = '507f1f77bcf86cd799439012';
 const fake = (role = 'employee') => ({ _id: id, email: 'self@example.com', role, status: 'active', passwordHash: 'stored-hash-must-not-leak', lastLoginAt: new Date('2026-10-24T03:00:00Z'), employee: { _id: employeeId, employeeNumber: 'EMP-1', firstName: 'Own', lastName: 'Profile', phone: '', address: '', jobTitle: 'Engineer', departmentId: { name: 'Engineering' }, teamId: { name: 'Platform' }, managerId: { firstName: 'Assigned', lastName: 'Manager' } } });
 function mockUser(t, user) {
@@ -98,6 +101,7 @@ test('existing accounts receive safe appearance defaults without a migration', a
   await assert.rejects(user.validate(), error => Boolean(error.errors['preferences.appearance.fontSize']));
 });
 test('password change verifies current password and persists only a new hash for the caller', async (t) => {
+  t.mock.method(require('../src/services/mailservice'), 'sendPasswordChangedEmail', async () => ({ status: 'accepted' }));
   mockUser(t, fake());
   t.mock.method(bcrypt, 'compare', async (password, hash) => password === 'OldPassword1' && hash === 'stored-hash-must-not-leak');
   t.mock.method(bcrypt, 'hash', async () => 'new-hash-must-not-leak');
