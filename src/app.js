@@ -28,6 +28,7 @@ app.use('/api/teams', teamRoutes);
 app.use('/api/employment-types', employmentTypeRoutes);
 app.use('/api/hierarchy', hierarchyRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/support', require('./modules/support/routes/supportroutes'));
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });

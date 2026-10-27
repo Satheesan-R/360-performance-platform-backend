@@ -59,4 +59,17 @@ async function sendPasswordChangedEmail(email, changedAt) {
   } finally { clearTimeout(timer); transporter.close(); }
 }
 
-module.exports = { sendActivationEmail, sendOtpEmail, sendPasswordChangedEmail };
+async function sendSupportNotification(recipients, number, event) {
+  const transporter = getTransporter();
+  if (!transporter) return { status: 'unavailable' };
+  let timer;
+  try {
+    const info = await Promise.race([transporter.sendMail({
+      from: env.mailFrom, bcc: recipients,
+      subject: 'Account support update: ' + number,
+      text: event + '\nRequest: ' + number + '\nOpen Personal Settings > Account > My Requests or Support Queue to view details.\n' + env.frontendUrl + '/settings?section=account\nNever reply with passwords, OTPs or secret credentials.',
+    }), new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('Support email timed out')), 3000); })]);
+    return { status: (info.accepted || []).length === recipients.length ? 'accepted' : 'failed' };
+  } finally { clearTimeout(timer); transporter.close(); }
+}
+module.exports = { sendActivationEmail, sendOtpEmail, sendPasswordChangedEmail, sendSupportNotification };
