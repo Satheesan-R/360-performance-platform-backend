@@ -70,7 +70,11 @@ async function changePassword(authUser, body) {
   if (!active.passwordHash) fail('Password is managed by your identity provider. Contact IT to change it', 403);
   if (!(await bcrypt.compare(currentPassword, active.passwordHash))) fail('Current password is incorrect');
   const passwordHash = await bcrypt.hash(newPassword, 10);
-  const result = await User.updateOne({ _id: active._id, status: 'active', passwordHash: active.passwordHash }, { $set: { passwordHash, passwordChangedAt: new Date() } });
+  const changedAt = new Date();
+  const result = await User.updateOne({ _id: active._id, status: 'active', passwordHash: active.passwordHash }, {
+    $set: { passwordHash, passwordChangedAt: changedAt }, $inc: { sessionVersion: 1 },
+  });
   if (result.matchedCount === 0) fail('Your account changed during this request. Sign in and try again', 409);
+  return { requiresLogin: true };
 }
 module.exports = { findActiveUser, profileDto, getProfile, updateProfile, changePassword, getPreferences, updatePreferences };
