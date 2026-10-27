@@ -39,4 +39,24 @@ async function sendOtpEmail(email, otp) {
   });
 }
 
-module.exports = { sendActivationEmail, sendOtpEmail };
+async function sendPasswordChangedEmail(email, changedAt) {
+  const transporter = getTransporter();
+  if (!transporter) return { status: 'unavailable' };
+  let timer;
+  try {
+    const sending = transporter.sendMail({
+      from: env.mailFrom,
+      to: email,
+      subject: 'Your account password was changed',
+      text: 'Your 360 Performance password was changed at ' + changedAt.toISOString() +
+        '. All existing sign-ins have ended. If you did not make this change, contact your HR or IT team immediately.',
+    });
+    // Keep the result inside the frontend's request timeout after the DB write.
+    const info = await Promise.race([sending, new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('Security email timed out')), 5000);
+    })]);
+    return { status: (info.accepted || []).some(address => String(address).toLowerCase() === email.toLowerCase()) ? 'accepted' : 'failed' };
+  } finally { clearTimeout(timer); transporter.close(); }
+}
+
+module.exports = { sendActivationEmail, sendOtpEmail, sendPasswordChangedEmail };

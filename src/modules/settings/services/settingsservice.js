@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const preferences = require('./preferences');
 const { fail, fields } = preferences;
 const profileDetails = require('./profile-details');
+const mail = require('../../../services/mailservice');
 
 async function findActiveUser(authUser) {
   if (!authUser || authUser.purpose || !/^[a-f\d]{24}$/i.test(String(authUser.id || '')) || !preferences.LANDING_PAGES[authUser.role]) fail('Login required', 401);
@@ -75,6 +76,10 @@ async function changePassword(authUser, body) {
     $set: { passwordHash, passwordChangedAt: changedAt }, $inc: { sessionVersion: 1 },
   });
   if (result.matchedCount === 0) fail('Your account changed during this request. Sign in and try again', 409);
-  return { requiresLogin: true };
+  // A mail failure must not disguise an already committed password change.
+  let notification;
+  try { notification = await mail.sendPasswordChangedEmail(active.email, changedAt); }
+  catch { notification = { status: 'failed' }; }
+  return { requiresLogin: true, notification };
 }
 module.exports = { findActiveUser, profileDto, getProfile, updateProfile, changePassword, getPreferences, updatePreferences };
