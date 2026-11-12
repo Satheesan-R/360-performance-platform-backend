@@ -3,9 +3,9 @@ const mongoose = require('mongoose');
 const schema = new mongoose.Schema({
   organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, immutable: true },
   name: { type: String, required: true, trim: true, maxlength: 200 },
-  templateId: { type: mongoose.Schema.Types.ObjectId, ref: 'ReviewTemplate', required: true, immutable: true },
-  templateSnapshotId: { type: mongoose.Schema.Types.ObjectId, ref: 'ReviewTemplateSnapshot', required: true, immutable: true },
-  templateVersion: { type: Number, required: true, immutable: true },
+  templateId: { type: mongoose.Schema.Types.ObjectId, ref: 'ReviewTemplate', required: true },
+  templateSnapshotId: { type: mongoose.Schema.Types.ObjectId, ref: 'ReviewTemplateSnapshot', default: null },
+  templateVersion: { type: Number, default: null },
   targetRole: { type: String, enum: ['department_manager'], default: 'department_manager', immutable: true },
   departmentIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Department' }],
   employeeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }],
