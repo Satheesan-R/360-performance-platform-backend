@@ -278,7 +278,7 @@ test('template activation rejects empty sections and incomplete frameworks', () 
   assert.throws(() => requireTemplateReady({ ...body(), sections: [{ title: 'Empty', allowComments: false }] }, framework()), { statusCode: 400 });
 });
 
-test('HR submits, admin approves and HR creates a snapshotted manager-only cycle', async (t) => {
+test('HR submits, admin approves and HR creates an editable manager-only draft cycle', async (t) => {
   const state = setup(t);
   await service.createTemplate({ ...body(), status: 'active' }, user);
   const request = {
@@ -302,9 +302,33 @@ test('HR submits, admin approves and HR creates a snapshotted manager-only cycle
   const created = await cycles.createCycle(request, user);
   assert.equal(created.targetRole, 'department_manager');
   assert.equal(created.status, 'draft');
-  assert.ok(created.templateSnapshotId);
-  assert.equal(created.templateVersion, state.template.__v);
+  assert.equal(created.templateSnapshotId, undefined);
+  assert.equal(state.snapshots.length, 0);
   assert.equal(create.mock.callCount(), 1);
+  let saved = { ...created, _id: kpi, __v: 0 };
+  t.mock.method(Cycle, 'findOne', () => ({ lean: async () => saved }));
+  const update = t.mock.method(Cycle, 'findOneAndUpdate', (filter, changes) => ({ lean: async () => {
+    if (filter.__v !== saved.__v || saved.status !== filter.status) return null;
+    saved = { ...saved, ...changes.$set, __v: saved.__v + 1 };
+    return saved;
+  } }));
+  const edited = await cycles.updateCycle(kpi, { name: 'Reopened draft', version: 0 }, user);
+  assert.equal(edited.name, 'Reopened draft');
+  assert.equal(edited.__v, 1);
+  assert.deepEqual(edited.employeeIds, [technical]);
+  assert.equal((await cycles.getCycle(kpi)).name, 'Reopened draft');
+  await assert.rejects(cycles.updateCycle(kpi, { name: 'Stale edit', version: 0 }, user), { statusCode: 409 });
+  for (const patch of [
+    { version: 1 }, { name: 'No version' }, { version: 1, status: 'published' },
+    { version: 1, employeeIds: [] }, { version: 1, employeeIds: [technical, technical] },
+    { version: 1, endDate: '2026-01-01' }, { version: 1, startDate: '2026-02-30' },
+    { version: 1, templateId: 'bad' },
+  ]) await assert.rejects(cycles.updateCycle(kpi, patch, user), { statusCode: 400 });
+  assert.equal(update.mock.callCount(), 1);
+  update.mock.mockImplementation(() => ({ lean: async () => null }));
+  await assert.rejects(cycles.updateCycle(kpi, { version: 1, name: 'Concurrent edit' }, user), { statusCode: 409 });
+  saved = { ...saved, status: 'published' };
+  await assert.rejects(cycles.updateCycle(kpi, { version: 1, name: 'Locked' }, user), { statusCode: 409 });
   accounts.mock.mockImplementation(async () => 0);
   await assert.rejects(cycles.createCycle(request, user), /active department_manager/);
 
@@ -312,7 +336,7 @@ test('HR submits, admin approves and HR creates a snapshotted manager-only cycle
   assert.equal(state.template.approvalStatus, 'not_submitted');
   assert.equal(state.template.approvedBy, null);
   await assert.rejects(cycles.createCycle(request, user), { statusCode: 409 });
-  assert.equal(state.snapshots[0].configuration.approvalStatus, 'approved');
+  assert.equal(state.snapshots.length, 0);
 });
 
 test('admin rejection and stale approval attempts cannot authorize a cycle', async (t) => {
@@ -383,4 +407,28 @@ test('Review Templates HTTP APIs enforce access and serve CRUD, previews and sna
   for (const role of ['department_manager', 'tech_lead']) {
     assert.equal((await send('POST', '/api/review-templates', role, body())).status, 403);
   }
+});
+
+
+test('draft cycle PATCH API requires HR and returns the edited cycle', async (t) => {
+  const calls = t.mock.method(cycles, 'updateCycle', async (cycleId, data, actor) => {
+    assert.equal(cycleId, id);
+    assert.equal(actor, user);
+    assert.deepEqual(data, { name: 'Edited draft', version: 0 });
+    return { _id: cycleId, name: data.name, __v: 1 };
+  });
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  for (const role of [null, 'employee', 'tech_lead', 'department_manager', 'admin', 'hr']) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (role) headers.Authorization = `Bearer ${jwt.sign({ id: user, role }, process.env.JWT_SECRET)}`;
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/review-cycles/${id}`, {
+      method: 'PATCH', headers, body: JSON.stringify({ name: 'Edited draft', version: 0 }),
+    });
+    assert.equal(response.status, role === 'hr' ? 200 : role ? 403 : 401);
+    if (role === 'hr') assert.equal((await response.json()).cycle.__v, 1);
+  }
+  assert.equal(calls.mock.callCount(), 1);
 });
