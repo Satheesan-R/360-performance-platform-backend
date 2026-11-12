@@ -54,16 +54,47 @@ Dates accept YYYY-MM-DD (UTC midnight) or ISO timestamps with a timezone; endDat
 must be after startDate. The server sets targetRole department_manager, status draft,
 and createdBy. Clients cannot supply those fields, approval or snapshot overrides.
 
-The cycle stores templateSnapshotId and templateVersion, copying approved prompts,
-evidence rules, targeting and pinned framework scoring. Approval/version are checked
-again after snapshot capture. If the template changed, creation fails with 409.
-Later template edits cannot change saved snapshot values. Future execution must
-use the snapshot rather than live configuration.
+Drafts reference the live template. templateSnapshotId and templateVersion are
+nullable and are not captured during draft creation or editing. Publication is a
+future endpoint and must revalidate eligibility and approval, then atomically pin
+the template/framework snapshots before changing status. Execution must use those
+snapshots. Draft creation does not start reviews or send notifications.
 
-There is no cycle publishing, scheduling, notification, reviewer assignment,
-response submission, score persistence or cycle editing in this stage. Creating
-a draft does not start reviews or send email. There are no participant-facing
-cycle endpoints yet.
+## Reopen and edit a draft
+
+GET /api/review-cycles/:id returns all editable fields and __v. HR can then call
+PATCH /api/review-cycles/:id with the returned __v as version and one or more
+editable fields. Arrays replace the previous selection in full.
+
+```json
+{
+  "version": 0,
+  "name": "Updated Annual Review",
+  "employeeIds": ["<department manager employee ID>"],
+  "endDate": "2026-12-15"
+}
+```
+
+Editable fields: name, templateId, departmentIds, employeeIds, startDate, endDate.
+The same validation as creation applies to the complete resulting draft, including
+unchanged selections. Changing template may require replacing departments and
+employees in the same request. Empty departmentIds inherit the new template's
+targeting. Only active HR can edit. Non-drafts, stale versions and simultaneous
+writes return 409; invalid or missing version returns 400. The response is
+`{ "cycle": { ... } }` with an incremented __v. Reload after a conflict.
+
+The database model stores organizationId, name, templateId, targetRole,
+departmentIds, employeeIds, startDate, endDate, status, createdBy, timestamps and
+__v, with nullable templateSnapshotId/templateVersion reserved for publication.
+Legacy draft snapshots are cleared on the next successful edit. Existing snapshots
+are retained in their own collection. No data migration is required.
+
+Reviewer assignments, publication, deadlines separate from the review period,
+submission, scoring, normalisation and development plans are later milestones.
+Current templates support department managers only; widening participants to other
+roles requires extending template authoring and validation first. Existing employee
+listing includes department, team and employment type for client-side selection;
+the cycle API persists explicit employee IDs and validates eligibility server-side.
 
 ## Read cycles
 

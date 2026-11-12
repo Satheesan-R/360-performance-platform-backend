@@ -20,4 +20,9 @@ router.get('/:id', allowRoles('hr', 'admin'), async (req, res, next) => {
   catch (error) { next(error); }
 });
 
+router.patch('/:id', allowRoles('hr'), async (req, res, next) => {
+  try { res.json({ cycle: await service.updateCycle(req.params.id, req.body, req.user.id) }); }
+  catch (error) { next(error); }
+});
+
 module.exports = router;
