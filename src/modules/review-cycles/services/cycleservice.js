@@ -4,7 +4,6 @@ const Employee = require('../../auth/models/employee');
 const Department = require('../../organization/models/department');
 const Organization = require('../../organization/models/organization');
 const { getTemplate } = require('../../review-templates/services/templateservice');
-const { createSnapshot } = require('../../review-templates/services/templatesnapshotservice');
 const { ready } = require('../../review-templates/services/templateapproval');
 const { fail, objectId, pagination } = require('../../organization/services/validation');
 
@@ -38,7 +37,7 @@ async function approvedTemplate(id) {
   return template;
 }
 
-async function createCycle(body, userId) {
+async function validateDraft(body, userId) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !['name', 'templateId', 'departmentIds', 'employeeIds', 'startDate', 'endDate'].includes(key))) fail('Invalid cycle fields');
   if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 200) fail('name must contain 1 to 200 characters');
   objectId(userId, 'createdBy');
@@ -71,14 +70,44 @@ async function createCycle(body, userId) {
   const managerCount = await User.countDocuments({ employee: { $in: employeeIds }, role: 'department_manager', status: 'active' });
   if (managerCount !== employeeIds.length) fail('Every selected employee must have an active department_manager account');
 
-  const snapshot = await createSnapshot(String(template._id), userId);
-  const configuration = snapshot.configuration;
-  if (snapshot.sourceVersion !== (template.__v ?? 0) || configuration.approvalStatus !== 'approved' || configuration.targetRole !== 'department_manager') fail('Template approval changed while creating the cycle. Reload and try again', 409);
-  return Cycle.create({
+  return {
     organizationId: template.organizationId, name: body.name.trim(), templateId: template._id,
-    templateSnapshotId: snapshot._id, templateVersion: snapshot.sourceVersion,
-    departmentIds, employeeIds, startDate, endDate, targetRole: 'department_manager', status: 'draft', createdBy: userId,
-  });
+    departmentIds, employeeIds, startDate, endDate, targetRole: 'department_manager',
+  };
+}
+
+async function createCycle(body, userId) {
+  const data = await validateDraft(body, userId);
+  return Cycle.create({ ...data, status: 'draft', createdBy: userId });
+}
+
+async function updateCycle(id, body, userId) {
+  const allowed = ['name', 'templateId', 'departmentIds', 'employeeIds', 'startDate', 'endDate', 'version'];
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !allowed.includes(key))) fail('Invalid cycle fields');
+  if (!Number.isSafeInteger(body.version) || body.version < 0) fail('version must be the non-negative integer returned as __v');
+  if (!Object.keys(body).some((key) => key !== 'version')) fail('At least one draft field is required');
+  const cycle = await getCycle(id);
+  if (cycle.status !== 'draft') fail('Only draft cycles can be edited', 409);
+  if ((cycle.__v ?? 0) !== body.version) fail('Cycle changed. Reload and try again', 409);
+  const merged = {};
+  for (const key of allowed.filter((key) => key !== 'version')) {
+    merged[key] = Object.hasOwn(body, key) ? body[key] : cycle[key];
+  }
+  if (!Object.hasOwn(body, 'templateId')) merged.templateId = String(merged.templateId);
+  // Stored dates are Date instances; JSON inputs must still pass strict date validation.
+  for (const key of ['startDate', 'endDate']) {
+    if (!Object.hasOwn(body, key)) merged[key] = new Date(merged[key]).toISOString();
+  }
+  for (const key of ['employeeIds', 'departmentIds']) {
+    if (!Object.hasOwn(body, key)) merged[key] = (merged[key] || []).map(String);
+  }
+  const data = await validateDraft(merged, userId);
+  const updated = await Cycle.findOneAndUpdate({
+    _id: cycle._id, organizationId: cycle.organizationId, status: 'draft',
+    __v: cycle.__v === undefined ? { $exists: false } : body.version,
+  }, { $set: data, $unset: { templateSnapshotId: '', templateVersion: '' }, $inc: { __v: 1 } }, { new: true, runValidators: true }).lean();
+  if (!updated) fail('Cycle changed. Reload and try again', 409);
+  return updated;
 }
 
 async function listCycles(query) {
@@ -100,4 +129,4 @@ async function getCycle(id) {
   return cycle;
 }
 
-module.exports = { createCycle, listCycles, getCycle };
+module.exports = { createCycle, listCycles, getCycle, updateCycle };
