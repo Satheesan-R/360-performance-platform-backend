@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { reviewerAssignmentSchema } = require('./reviewerassignment');
 
 const schema = new mongoose.Schema({
   organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, immutable: true },
@@ -9,6 +10,7 @@ const schema = new mongoose.Schema({
   targetRole: { type: String, enum: ['department_manager'], default: 'department_manager', immutable: true },
   departmentIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Department' }],
   employeeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }],
+  reviewerAssignments: { type: [reviewerAssignmentSchema], default: [] },
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
   status: { type: String, enum: ['draft'], default: 'draft' },

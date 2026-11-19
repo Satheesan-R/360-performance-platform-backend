@@ -17,6 +17,7 @@ const app = express();
 app.use(cors(
   {  origin: env.frontendUrl, credentials: true }
   ));
+app.use('/api/review-cycles', cycleRoutes);
 app.use(express.json({ limit: '20kb'}
    ));
 
@@ -29,7 +30,6 @@ app.use('/api/employment-types', employmentTypeRoutes);
 app.use('/api/hierarchy', hierarchyRoutes);
 app.use('/api/performance-frameworks', frameworkRoutes);
 app.use('/api/review-templates', templateRoutes);
-app.use('/api/review-cycles', cycleRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });

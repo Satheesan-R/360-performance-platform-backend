@@ -75,7 +75,8 @@ editable fields. Arrays replace the previous selection in full.
 }
 ```
 
-Editable fields: name, templateId, departmentIds, employeeIds, startDate, endDate.
+Editable fields are name, templateId, departmentIds, employeeIds, startDate,
+endDate, and reviewerAssignments.
 The same validation as creation applies to the complete resulting draft, including
 unchanged selections. Changing template may require replacing departments and
 employees in the same request. Empty departmentIds inherit the new template's
@@ -89,12 +90,54 @@ __v, with nullable templateSnapshotId/templateVersion reserved for publication.
 Legacy draft snapshots are cleared on the next successful edit. Existing snapshots
 are retained in their own collection. No data migration is required.
 
-Reviewer assignments, publication, deadlines separate from the review period,
+Publication, deadlines separate from the review period,
 submission, scoring, normalisation and development plans are later milestones.
 Current templates support department managers only; widening participants to other
 roles requires extending template authoring and validation first. Existing employee
 listing includes department, team and employment type for client-side selection;
 the cycle API persists explicit employee IDs and validates eligibility server-side.
+
+## Assign reviewers to a draft
+
+HR can include `reviewerAssignments` in the cycle creation request or replace the
+entire list with `PATCH /api/review-cycles/:id`:
+
+```json
+{
+  "version": 1,
+  "reviewerAssignments": [
+    {
+      "employeeId": "<participant employee ID>",
+      "reviewerEmployeeId": "<participant employee ID>",
+      "role": "self"
+    },
+    {
+      "employeeId": "<participant employee ID>",
+      "reviewerEmployeeId": "<manager employee ID>",
+      "role": "manager"
+    }
+  ]
+}
+```
+
+- Each assignment must target a selected participant and use a role enabled in
+  the approved template's framework snapshot.
+- Reviewers must have active accounts and belong to the cycle organization,
+  including legacy employee records with no explicit organization link.
+- Self reviews use the participant's own employee ID. All other reviews use a
+  different employee. Peers must be department managers, Team Lead reviewers
+  must have the `tech_lead` role, and manager reviewers must match the participant's
+  `managerId` reporting link. Reviewers may be outside the participant list.
+- A reviewer can appear once per participant. Each participant can have one
+  self, manager, or Team Lead reviewer per role and multiple distinct peers.
+  A draft can hold up to 2,000 assignments and may be saved with incomplete assignments.
+- Omit the field on PATCH to keep existing assignments. Send an empty array to
+  clear them. When changing the participant list or template, replace any
+  assignments that would become invalid in the same request.
+
+Cycle responses include `reviewerAssignments`. Existing drafts read as an empty
+list until assignments are saved. The assignment list and cycle fields share the
+same version check and are saved together.
 
 ## Read cycles
 
