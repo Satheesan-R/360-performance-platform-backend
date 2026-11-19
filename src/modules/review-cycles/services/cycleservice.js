@@ -6,6 +6,8 @@ const Organization = require('../../organization/models/organization');
 const { getTemplate } = require('../../review-templates/services/templateservice');
 const { ready } = require('../../review-templates/services/templateapproval');
 const { fail, objectId, pagination } = require('../../organization/services/validation');
+const { validateReviewerAssignments } = require('./reviewerassignments');
+const draftFields = ['name', 'templateId', 'departmentIds', 'employeeIds', 'startDate', 'endDate', 'reviewerAssignments'];
 
 function ids(value, field, required = false) {
   if (!Array.isArray(value) || value.length > 500 || (required && !value.length)) fail(`${field} must be ${required ? 'a non-empty' : 'an'} array of at most 500 IDs`);
@@ -38,7 +40,7 @@ async function approvedTemplate(id) {
 }
 
 async function validateDraft(body, userId) {
-  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !['name', 'templateId', 'departmentIds', 'employeeIds', 'startDate', 'endDate'].includes(key))) fail('Invalid cycle fields');
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !draftFields.includes(key))) fail('Invalid cycle fields');
   if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 200) fail('name must contain 1 to 200 characters');
   objectId(userId, 'createdBy');
   objectId(body.templateId, 'templateId');
@@ -58,7 +60,7 @@ async function validateDraft(body, userId) {
   const participants = await Employee.find({
     _id: { $in: employeeIds },
     $or: [{ organizationId: template.organizationId }, { organizationId: null }],
-  }).select('_id departmentId employmentTypeId jobTitle').lean();
+  }).select('_id departmentId employmentTypeId jobTitle managerId').lean();
   if (participants.length !== employeeIds.length) fail('Selected employees must belong to this organization');
   const types = (template.employmentTypeIds?.length ? template.employmentTypeIds : template.frameworkSnapshot.applicableEmploymentTypeIds || []).map(String);
   const jobs = (template.frameworkSnapshot.applicableJobRoles || []).map((title) => title.toLowerCase());
@@ -69,10 +71,13 @@ async function validateDraft(body, userId) {
   }
   const managerCount = await User.countDocuments({ employee: { $in: employeeIds }, role: 'department_manager', status: 'active' });
   if (managerCount !== employeeIds.length) fail('Every selected employee must have an active department_manager account');
+  const reviewerAssignments = await validateReviewerAssignments(
+    Object.hasOwn(body, 'reviewerAssignments') ? body.reviewerAssignments : [], participants, template,
+  );
 
   return {
     organizationId: template.organizationId, name: body.name.trim(), templateId: template._id,
-    departmentIds, employeeIds, startDate, endDate, targetRole: 'department_manager',
+    departmentIds, employeeIds, reviewerAssignments, startDate, endDate, targetRole: 'department_manager',
   };
 }
 
@@ -82,7 +87,7 @@ async function createCycle(body, userId) {
 }
 
 async function updateCycle(id, body, userId) {
-  const allowed = ['name', 'templateId', 'departmentIds', 'employeeIds', 'startDate', 'endDate', 'version'];
+  const allowed = [...draftFields, 'version'];
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !allowed.includes(key))) fail('Invalid cycle fields');
   if (!Number.isSafeInteger(body.version) || body.version < 0) fail('version must be the non-negative integer returned as __v');
   if (!Object.keys(body).some((key) => key !== 'version')) fail('At least one draft field is required');
@@ -90,7 +95,7 @@ async function updateCycle(id, body, userId) {
   if (cycle.status !== 'draft') fail('Only draft cycles can be edited', 409);
   if ((cycle.__v ?? 0) !== body.version) fail('Cycle changed. Reload and try again', 409);
   const merged = {};
-  for (const key of allowed.filter((key) => key !== 'version')) {
+  for (const key of draftFields) {
     merged[key] = Object.hasOwn(body, key) ? body[key] : cycle[key];
   }
   if (!Object.hasOwn(body, 'templateId')) merged.templateId = String(merged.templateId);
@@ -100,6 +105,11 @@ async function updateCycle(id, body, userId) {
   }
   for (const key of ['employeeIds', 'departmentIds']) {
     if (!Object.hasOwn(body, key)) merged[key] = (merged[key] || []).map(String);
+  }
+  if (!Object.hasOwn(body, 'reviewerAssignments')) {
+    merged.reviewerAssignments = (cycle.reviewerAssignments || []).map(({ employeeId, reviewerEmployeeId, role }) => ({
+      employeeId: String(employeeId), reviewerEmployeeId: String(reviewerEmployeeId), role,
+    }));
   }
   const data = await validateDraft(merged, userId);
   const updated = await Cycle.findOneAndUpdate({
@@ -118,7 +128,11 @@ async function listCycles(query) {
     Cycle.find(filter).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     Cycle.countDocuments(filter),
   ]);
-  return { cycles, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  return { cycles: cycles.map(withReviewerAssignments), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+}
+
+function withReviewerAssignments(cycle) {
+  return { ...cycle, reviewerAssignments: cycle.reviewerAssignments ?? [] };
 }
 
 async function getCycle(id) {
@@ -126,7 +140,7 @@ async function getCycle(id) {
   const company = await organization();
   const cycle = await Cycle.findOne({ _id: id, organizationId: company._id }).lean();
   if (!cycle) fail('Review cycle was not found', 404);
-  return cycle;
+  return withReviewerAssignments(cycle);
 }
 
 module.exports = { createCycle, listCycles, getCycle, updateCycle };
