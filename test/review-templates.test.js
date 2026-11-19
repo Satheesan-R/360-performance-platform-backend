@@ -339,6 +339,88 @@ test('HR submits, admin approves and HR creates an editable manager-only draft c
   assert.equal(state.snapshots.length, 0);
 });
 
+test('HR can save and replace validated reviewer assignments on a draft', async (t) => {
+  const state = setup(t);
+  await service.createTemplate({ ...body(), status: 'active' }, user);
+  await approvals.submit(id, user, {});
+  await approvals.decide(id, org, true, {});
+
+  const employees = [technical, behavioral].map((_id) => ({ _id, employmentTypeId: type, managerId: kpi }));
+  t.mock.method(Employee, 'find', ({ _id }) => ({
+    select() { return this; }, lean: async () => employees.filter((employee) => _id.$in.includes(employee._id)),
+  }));
+  t.mock.method(User, 'countDocuments', ({ employee }) => employee.$in.length);
+  const eligible = t.mock.method(Employee, 'countDocuments', async (filter) => {
+    assert.deepEqual(filter.$or, [{ organizationId: org }, { organizationId: null }]);
+    return filter._id.$in.length;
+  });
+  const accounts = t.mock.method(User, 'find', ({ employee, status }) => {
+    assert.equal(status, 'active');
+    return {
+      select() { return this; },
+      lean: async () => employee.$in.map((employee) => ({ employee, role: 'admin' })),
+    };
+  });
+  let saved;
+  t.mock.method(Cycle, 'create', async (data) => {
+    const cycle = new Cycle({ ...data, _id: fw, __v: 0 });
+    await cycle.validate();
+    saved = cycle.toObject();
+    return saved;
+  });
+  t.mock.method(Cycle, 'findOne', () => ({ lean: async () => saved }));
+  t.mock.method(Cycle, 'findOneAndUpdate', (filter, changes) => ({ lean: async () => {
+    assert.equal(filter.__v, saved.__v);
+    assert.equal(filter.status, 'draft');
+    saved = { ...saved, ...changes.$set, __v: saved.__v + 1 };
+    return saved;
+  } }));
+
+  const self = { employeeId: technical, reviewerEmployeeId: technical, role: 'self' };
+  const peer = { employeeId: technical, reviewerEmployeeId: behavioral, role: 'peer' };
+  const manager = { employeeId: technical, reviewerEmployeeId: kpi, role: 'manager' };
+  const request = {
+    name: 'Assignments', templateId: id, employeeIds: [technical, behavioral],
+    startDate: '2026-11-01', endDate: '2026-12-01',
+  };
+  for (const invalid of [
+    null, [self, { ...self, employeeId: technical.toUpperCase() }],
+    [{ ...self, reviewerEmployeeId: behavioral }],
+    [{ ...peer, employeeId: kpi }],
+    [{ ...peer, role: 'tech_lead' }],
+    [{ ...manager, reviewerEmployeeId: behavioral }],
+    [{ ...peer, reviewerEmployeeId: kpi }],
+  ]) await assert.rejects(cycles.createCycle({ ...request, reviewerAssignments: invalid }, user), { statusCode: 400 });
+
+  eligible.mock.mockImplementationOnce(async () => 0);
+  await assert.rejects(cycles.createCycle({ ...request, reviewerAssignments: [manager] }, user), /belong to the organization/);
+  accounts.mock.mockImplementationOnce(() => ({ select() { return this; }, lean: async () => [] }));
+  await assert.rejects(cycles.createCycle({ ...request, reviewerAssignments: [manager] }, user), /active account/);
+
+  const server = app.listen(0, '127.0.0.1');
+  t.after(() => server.close());
+  await new Promise((resolve) => server.once('listening', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/api/review-cycles`;
+  const call = (method, path, role, data) => fetch(url + path, {
+    method, headers: { Authorization: `Bearer ${jwt.sign({ id: user, role }, process.env.JWT_SECRET)}`, 'Content-Type': 'application/json' },
+    body: data && JSON.stringify(data),
+  });
+  const created = await call('POST', '', 'hr', { ...request, reviewerAssignments: [self, peer, manager] });
+  assert.equal(created.status, 201);
+  assert.deepEqual((await created.json()).cycle.reviewerAssignments, [self, peer, manager]);
+  const detail = await call('GET', '/' + fw, 'admin');
+  assert.deepEqual((await detail.json()).cycle.reviewerAssignments, [self, peer, manager]);
+  const patch = { version: 0, employeeIds: [behavioral] };
+  assert.equal((await call('PATCH', '/' + fw, 'hr', patch)).status, 400);
+  patch.reviewerAssignments = [];
+  assert.equal((await call('PATCH', '/' + fw, 'admin', patch)).status, 403);
+  const updated = await call('PATCH', '/' + fw, 'hr', patch);
+  assert.equal(updated.status, 200);
+  assert.deepEqual((await updated.json()).cycle.reviewerAssignments, []);
+  assert.equal((await call('PATCH', '/' + fw, 'hr', patch)).status, 409);
+  assert.equal(state.template.approvalStatus, 'approved');
+});
+
 test('admin rejection and stale approval attempts cannot authorize a cycle', async (t) => {
   const state = setup(t);
   await service.createTemplate({ ...body(), status: 'active' }, user);
