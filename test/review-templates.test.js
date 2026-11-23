@@ -46,6 +46,10 @@ function setup(t) {
   t.mock.method(Organization, 'findOne', async () => ({ _id: org }));
   t.mock.method(User, 'exists', async (filter) => { assert.equal(filter.status, 'active'); return true; });
   t.mock.method(EmploymentType, 'countDocuments', async (filter) => { assert.equal(filter.organizationId, org); assert.equal(filter.isActive, true); return filter._id.$in.includes(type) ? 1 : 0; });
+  t.mock.method(EmploymentType, 'find', (filter) => ({ select() { return this; }, lean: async () => {
+    assert.equal(filter.organizationId, org);
+    return filter._id.$in.map(String).includes(type) ? [{ _id: type, name: 'Permanent', code: 'PERMANENT', isActive: true }] : [];
+  } }));
   t.mock.method(Framework, 'findOne', (filter) => {
     assert.equal(String(filter._id), fw); assert.equal(String(filter.organizationId), org);
     return { lean: async () => state.framework ? copy(state.framework) : null };
@@ -177,6 +181,7 @@ test('preview readiness validates proposed and inherited targeting without chang
   const inherited = await previewTemplate(id, { employmentTypeIds: [] });
   assert.equal(inherited.validation.ready, false);
   assert.deepEqual(inherited.effectiveEmploymentTypeIds, [type]);
+  assert.equal(inherited.effectiveEmploymentTypes[0].name, 'Permanent');
 });
 
 test('template snapshots preserve old questions and pinned scoring after template edits', async (t) => {
@@ -199,7 +204,7 @@ test('template snapshots preserve old questions and pinned scoring after templat
 test('template lists support status, framework, targeting, search and pagination', async (t) => {
   setup(t);
   let filter;
-  const chain = { select(value) { assert.equal(value, '-frameworkSnapshot'); return this; }, sort() { return this; }, skip(value) { assert.equal(value, 10); return this; }, limit() { return this; }, populate() { return this; }, lean: async () => [] };
+  const chain = { sort() { return this; }, skip(value) { assert.equal(value, 10); return this; }, limit() { return this; }, populate() { return this; }, lean: async () => [{ employmentTypeIds: [], frameworkSnapshot: { applicableEmploymentTypeIds: [type] } }] };
   t.mock.method(Template, 'find', (value) => { filter = value; return chain; });
   t.mock.method(Template, 'countDocuments', async () => 12);
   const result = await service.listTemplates({ page: '2', limit: '10', search: 'a.*', status: 'draft', approvalStatus: 'pending', frameworkId: fw, employmentTypeId: type });
@@ -207,6 +212,8 @@ test('template lists support status, framework, targeting, search and pagination
   assert.equal(filter.approvalStatus, 'pending');
   assert.equal(filter.$or[0].name.$regex, 'a\\.\\*');
   assert.deepEqual(result.pagination, { page: 2, limit: 10, total: 12, totalPages: 2 });
+  assert.equal(result.templates[0].effectiveEmploymentTypes[0].name, 'Permanent');
+  assert.equal(result.templates[0].frameworkSnapshot, undefined);
   await assert.rejects(service.listTemplates({ status: 'deleted' }), { statusCode: 400 });
 });
 

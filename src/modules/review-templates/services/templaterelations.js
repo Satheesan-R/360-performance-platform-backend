@@ -21,6 +21,13 @@ async function validateEmploymentTypes(template, framework) {
   }
 }
 
+async function employmentTypeLookup(ids, organizationId) {
+  if (!ids.length) return new Map();
+  const types = await EmploymentType.find({ _id: { $in: ids }, organizationId })
+    .select('name code isActive').lean();
+  return new Map(types.map((type) => [String(type._id), type]));
+}
+
 async function validateDepartments(template) {
   const ids = template.departmentIds || [];
 
@@ -70,6 +77,7 @@ function frameworkForTemplate(template) {
 module.exports = {
   resolveFramework,
   validateEmploymentTypes,
+  employmentTypeLookup,
   validateDepartments,
   validateCriteria,
   requireTemplateReady,
