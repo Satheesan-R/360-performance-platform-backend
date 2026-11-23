@@ -17,6 +17,21 @@ router.get('/', allowRoles('hr', 'admin'), async (req, res, next) => {
   catch (error) { next(error); }
 });
 
+router.get('/assigned', async (req, res, next) => {
+  try { res.json(await service.listAssignedCycles(req.user.id, req.query)); }
+  catch (error) { next(error); }
+});
+
+router.get('/assigned/:id', async (req, res, next) => {
+  try { res.json({ review: await service.getAssignedReview(req.params.id, req.user.id) }); }
+  catch (error) { next(error); }
+});
+
+router.post('/:id/publish', allowRoles('hr'), draftJson, async (req, res, next) => {
+  try { res.json({ cycle: await service.publishCycle(req.params.id, req.body, req.user.id) }); }
+  catch (error) { next(error); }
+});
+
 router.get('/:id', allowRoles('hr', 'admin'), async (req, res, next) => {
   try { res.json({ cycle: await service.getCycle(req.params.id) }); }
   catch (error) { next(error); }

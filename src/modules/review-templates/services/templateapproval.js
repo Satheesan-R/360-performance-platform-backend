@@ -28,7 +28,7 @@ async function ready(template) {
   requireTemplateReady(template, framework);
   await validateDepartments(template);
   await validateEmploymentTypes(template, framework);
-  if (template.targetRole !== 'department_manager') fail('This workflow requires a department-manager template');
+  if (!['employee', 'tech_lead', 'department_manager'].includes(template.targetRole)) fail('Select Employee, Tech Lead, or Department Manager before submitting');
 }
 
 async function save(template, data) {

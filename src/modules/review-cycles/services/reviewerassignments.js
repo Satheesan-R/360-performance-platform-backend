@@ -39,7 +39,7 @@ async function validateReviewerAssignments(value, participants, template) {
     return { employeeId, reviewerEmployeeId, role };
   });
 
-  const accountRoles = new Map(participants.map((employee) => [String(employee._id), 'department_manager']));
+  const accountRoles = new Map(participants.map((employee) => [String(employee._id), template.targetRole]));
   if (externalReviewerIds.size) {
     const reviewerIds = [...externalReviewerIds];
     const [employeeCount, accounts] = await Promise.all([
@@ -56,7 +56,7 @@ async function validateReviewerAssignments(value, participants, template) {
   }
   for (const { role, reviewerEmployeeId } of assignments) {
     const accountRole = accountRoles.get(reviewerEmployeeId);
-    if (role === 'peer' && accountRole !== 'department_manager') fail('Peer reviewers must be department managers');
+    if (role === 'peer' && accountRole !== template.targetRole) fail('Peer reviewers must have the same account role as the participant');
     if (role === 'tech_lead' && accountRole !== 'tech_lead') fail('Team Lead reviewers must have the tech_lead role');
   }
   return assignments;

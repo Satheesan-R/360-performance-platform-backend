@@ -20,7 +20,7 @@ const templateSchema = new mongoose.Schema({
   description: { type: String, trim: true, maxlength: 2000, default: '' },
   reviewType: { type: String, enum: ['annual', 'probation', 'internship'], default: 'annual' },
   departmentIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Department' }],
-  targetRole: { type: String, enum: ['department_manager'], default: 'department_manager' },
+  targetRole: { type: String, enum: ['employee', 'tech_lead', 'department_manager'], default: 'department_manager' },
   frameworkId: { type: mongoose.Schema.Types.ObjectId, ref: 'PerformanceFramework', required: true, index: true },
   employmentTypeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'EmploymentType' }],
   sections: { type: [sectionSchema], default: [] },

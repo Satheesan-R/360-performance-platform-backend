@@ -91,8 +91,8 @@ function parseTemplate(body, create = false) {
   }
 
   if (Object.hasOwn(body, 'targetRole')) {
-    if (body.targetRole !== 'department_manager') {
-      fail('HR templates currently target department_manager only');
+    if (!['employee', 'tech_lead', 'department_manager'].includes(body.targetRole)) {
+      fail('targetRole must be employee, tech_lead, or department_manager');
     }
 
     data.targetRole = body.targetRole;

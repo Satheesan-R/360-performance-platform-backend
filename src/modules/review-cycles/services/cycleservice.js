@@ -1,4 +1,6 @@
 const Cycle = require('../models/reviewcycle');
+const Snapshot = require('../../review-templates/models/templatesnapshot');
+const { createSnapshot } = require('../../review-templates/services/templatesnapshotservice');
 const User = require('../../auth/models/usermodel');
 const Employee = require('../../auth/models/employee');
 const Department = require('../../organization/models/department');
@@ -32,8 +34,8 @@ async function organization() {
 
 async function approvedTemplate(id) {
   const template = await getTemplate(id);
-  if (template.status !== 'active' || template.approvalStatus !== 'approved' || template.targetRole !== 'department_manager') {
-    fail('Choose an active, admin-approved department-manager template', 409);
+  if (template.status !== 'active' || template.approvalStatus !== 'approved') {
+    fail('Choose an active, admin-approved template', 409);
   }
   await ready(template);
   return template;
@@ -65,24 +67,24 @@ async function validateDraft(body, userId) {
   const types = (template.employmentTypeIds?.length ? template.employmentTypeIds : template.frameworkSnapshot.applicableEmploymentTypeIds || []).map(String);
   const jobs = (template.frameworkSnapshot.applicableJobRoles || []).map((title) => title.toLowerCase());
   for (const employee of participants) {
-    if (departmentIds.length && !departmentIds.includes(String(employee.departmentId))) fail('Selected managers must belong to the cycle departments');
-    if (types.length && !types.includes(String(employee.employmentTypeId))) fail('Selected managers must match template employment types');
-    if (jobs.length && !jobs.includes((employee.jobTitle || '').trim().toLowerCase())) fail('Selected managers must match the framework job roles');
+    if (departmentIds.length && !departmentIds.includes(String(employee.departmentId))) fail('Selected participants must belong to the cycle departments');
+    if (types.length && !types.includes(String(employee.employmentTypeId))) fail('Selected participants must match template employment types');
+    if (jobs.length && !jobs.includes((employee.jobTitle || '').trim().toLowerCase())) fail('Selected participants must match the framework job roles');
   }
-  const managerCount = await User.countDocuments({ employee: { $in: employeeIds }, role: 'department_manager', status: 'active' });
-  if (managerCount !== employeeIds.length) fail('Every selected employee must have an active department_manager account');
+  const participantCount = await User.countDocuments({ employee: { $in: employeeIds }, role: template.targetRole, status: 'active' });
+  if (participantCount !== employeeIds.length) fail(`Every selected participant must have an active ${template.targetRole} account`);
   const reviewerAssignments = await validateReviewerAssignments(
     Object.hasOwn(body, 'reviewerAssignments') ? body.reviewerAssignments : [], participants, template,
   );
 
-  return {
+  return { template, data: {
     organizationId: template.organizationId, name: body.name.trim(), templateId: template._id,
-    departmentIds, employeeIds, reviewerAssignments, startDate, endDate, targetRole: 'department_manager',
-  };
+    departmentIds, employeeIds, reviewerAssignments, startDate, endDate, targetRole: template.targetRole,
+  } };
 }
 
 async function createCycle(body, userId) {
-  const data = await validateDraft(body, userId);
+  const { data } = await validateDraft(body, userId);
   return Cycle.create({ ...data, status: 'draft', createdBy: userId });
 }
 
@@ -94,6 +96,20 @@ async function updateCycle(id, body, userId) {
   const cycle = await getCycle(id);
   if (cycle.status !== 'draft') fail('Only draft cycles can be edited', 409);
   if ((cycle.__v ?? 0) !== body.version) fail('Cycle changed. Reload and try again', 409);
+  const { data } = await validateDraft(draftValues(cycle, body), userId);
+  const updated = await Cycle.findOneAndUpdate(draftFilter(cycle), { $set: data, $unset: { templateSnapshotId: '', templateVersion: '' }, $inc: { __v: 1 } }, { new: true, runValidators: true }).lean();
+  if (!updated) fail('Cycle changed. Reload and try again', 409);
+  return updated;
+}
+
+function draftFilter(cycle) {
+  return {
+    _id: cycle._id, organizationId: cycle.organizationId, status: 'draft',
+    __v: cycle.__v === undefined ? { $exists: false } : cycle.__v,
+  };
+}
+
+function draftValues(cycle, body = {}) {
   const merged = {};
   for (const key of draftFields) {
     merged[key] = Object.hasOwn(body, key) ? body[key] : cycle[key];
@@ -111,13 +127,86 @@ async function updateCycle(id, body, userId) {
       employeeId: String(employeeId), reviewerEmployeeId: String(reviewerEmployeeId), role,
     }));
   }
-  const data = await validateDraft(merged, userId);
-  const updated = await Cycle.findOneAndUpdate({
-    _id: cycle._id, organizationId: cycle.organizationId, status: 'draft',
-    __v: cycle.__v === undefined ? { $exists: false } : body.version,
-  }, { $set: data, $unset: { templateSnapshotId: '', templateVersion: '' }, $inc: { __v: 1 } }, { new: true, runValidators: true }).lean();
+  return merged;
+}
+
+async function publishCycle(id, body, userId) {
+  if (!body || Object.keys(body).length !== 1 || !Number.isSafeInteger(body.version) || body.version < 0) {
+    fail('Supply the saved draft version');
+  }
+  const cycle = await getCycle(id);
+  if (cycle.status !== 'draft' || (cycle.__v ?? 0) !== body.version) {
+    fail('Cycle changed or is already published. Reload and try again', 409);
+  }
+  const { template, data } = await validateDraft(draftValues(cycle), userId);
+  const assigned = new Set(data.reviewerAssignments.map(({ employeeId }) => employeeId));
+  if (data.employeeIds.some((employeeId) => !assigned.has(employeeId))) {
+    fail('Assign at least one reviewer to each participant before publishing', 400);
+  }
+  const snapshot = await createSnapshot(String(template._id), userId);
+  if (snapshot.sourceVersion !== (template.__v ?? 0) || snapshot.configuration.approvalStatus !== 'approved') {
+    fail('Template approval changed. Reload the draft before publishing', 409);
+  }
+  const updated = await Cycle.findOneAndUpdate(draftFilter(cycle), {
+    $set: { ...data, status: 'published', publishedAt: new Date(), templateSnapshotId: snapshot._id, templateVersion: snapshot.sourceVersion },
+    $inc: { __v: 1 },
+  }, { new: true, runValidators: true }).lean();
   if (!updated) fail('Cycle changed. Reload and try again', 409);
   return updated;
+}
+
+async function assignedScope(userId) {
+  const [company, account] = await Promise.all([
+    organization(),
+    User.findOne({ _id: userId, status: 'active' }).select('employee').lean(),
+  ]);
+  return { company, employeeId: account?.employee };
+}
+
+async function listAssignedCycles(userId, query) {
+  const { page, limit } = pagination(query);
+  const { company, employeeId } = await assignedScope(userId);
+  if (!employeeId) return { cycles: [], pagination: { page, limit, total: 0, totalPages: 0 } };
+  const filter = { organizationId: company._id, status: 'published', 'reviewerAssignments.reviewerEmployeeId': employeeId };
+  const [cycles, total] = await Promise.all([
+    Cycle.find(filter).select('name startDate endDate').sort({ publishedAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+    Cycle.countDocuments(filter),
+  ]);
+  return { cycles, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+}
+
+async function getAssignedReview(id, userId) {
+  objectId(id, 'cycleId');
+  const { company, employeeId } = await assignedScope(userId);
+  const cycle = employeeId && await Cycle.findOne({
+    _id: id, organizationId: company._id, status: 'published', 'reviewerAssignments.reviewerEmployeeId': employeeId,
+  }).lean();
+  if (!cycle) fail('Assigned review was not found', 404);
+  const assignments = cycle.reviewerAssignments.filter((assignment) => String(assignment.reviewerEmployeeId) === String(employeeId));
+  if (!assignments.length) fail('Assigned review was not found', 404);
+  const [snapshot, participants] = await Promise.all([
+    Snapshot.findOne({ _id: cycle.templateSnapshotId, templateId: cycle.templateId, organizationId: company._id }).lean(),
+    Employee.find({ _id: { $in: assignments.map((assignment) => assignment.employeeId) } }).select('firstName lastName').lean(),
+  ]);
+  if (!snapshot) fail('The published review form is unavailable', 409);
+  const configuration = snapshot.configuration;
+  const framework = configuration.framework;
+  const resolve = (ids, entries) => (ids || []).map((id) =>
+    (entries || []).find((entry) => String(entry._id) === String(id)) || { _id: id, missing: true });
+  return {
+    name: cycle.name, templateName: configuration.name, description: configuration.description,
+    ratingScale: framework.ratingScale ?? null,
+    sections: configuration.sections.map((section) => ({
+      ...section,
+      competencies: resolve(section.competencyIds, framework.competencies),
+      kpis: resolve(section.kpiIds, framework.kpis),
+      evidenceRequired: Boolean(configuration.evidenceRequired || section.evidenceRequired),
+    })),
+    assignments: assignments.map(({ employeeId, role }) => {
+      const person = participants.find((employee) => String(employee._id) === String(employeeId));
+      return { employeeId, role, participantName: person ? [person.firstName, person.lastName].filter(Boolean).join(' ') : '' };
+    }),
+  };
 }
 
 async function listCycles(query) {
@@ -143,4 +232,4 @@ async function getCycle(id) {
   return withReviewerAssignments(cycle);
 }
 
-module.exports = { createCycle, listCycles, getCycle, updateCycle };
+module.exports = { createCycle, listCycles, getCycle, updateCycle, publishCycle, listAssignedCycles, getAssignedReview };
