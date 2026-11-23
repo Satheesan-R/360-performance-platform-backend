@@ -59,7 +59,8 @@ async function validateEmploymentTypes(ids, organizationId) {
 
 function overview(record) {
   const data = typeof record.toObject === 'function' ? record.toObject() : record;
-  return { ...data, competencies: data.competencies || [], kpis: data.kpis || [], ...scoringSummary(data), ratingScale: data.ratingScale ?? null, scoringValidation: scoringStatus(data) };
+  const applicableEmploymentTypes = (data.applicableEmploymentTypeIds || []).filter((type) => type?.name);
+  return { ...data, applicableEmploymentTypes, competencies: data.competencies || [], kpis: data.kpis || [], ...scoringSummary(data), ratingScale: data.ratingScale ?? null, scoringValidation: scoringStatus(data) };
 }
 
 async function createFramework(body, userId) {
