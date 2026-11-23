@@ -2,12 +2,14 @@
 
 Single-company Express and MongoDB backend.
 
+Initial admin login: [setup instructions](docs/admin-setup.md) (`npm run create:admin`).
+
 Organization Overview and Departments API: [contract and integration guide](docs/organization-api.md).
 
-Settings page API: [endpoints and frontend integration](docs/settings-api.md), with a
-[reusable frontend client](examples/settings-api.mjs).
+Performance Framework, criteria, scoring, and snapshots: [API and frontend integration guide](docs/performance-framework-api.md).
 
-Goals and OKRs API: [goal plans, cascading objectives, key results, and progress check-ins](docs/goals-api.md).
-Goal writes require MongoDB Atlas or a local replica set with transaction support.
+Review Templates: [API, preview, and snapshot guide](docs/review-templates-api.md).
 
-Run `npm test` for validation, department assignment, summary, goals/OKRs, and API access checks.
+Admin approval and HR department-manager cycles: [API guide](docs/review-cycles-api.md).
+
+Run `npm test` for validation, department assignment, summary, and API access checks.

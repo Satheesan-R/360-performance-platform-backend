@@ -20,7 +20,7 @@ async function listHierarchy(query) {
   const organization = await Organization.findOne({ singletonKey: 'company' });
   if (!organization) fail('Set up the organization before managing reporting relationships', 409);
   const employees = await Employee.find({ $or: [{ organizationId: organization._id }, { organizationId: null }] })
-    .select('employeeNumber firstName lastName jobTitle department departmentId teamId manager managerId organizationId')
+    .select('employeeNumber firstName lastName jobTitle departmentId teamId managerId organizationId')
     .sort({ firstName: 1, lastName: 1, _id: 1 }).populate(populate).lean();
   const search = (query.search || '').trim().toLowerCase();
   const visible = employees.filter((employee) => !search ||
@@ -72,7 +72,6 @@ async function assignManager(employeeId, body) {
     await Employee.updateOne({ _id: employeeId }, { $set: {
       managerId,
       organizationId: organization._id,
-      manager: manager ? `${manager.firstName} ${manager.lastName}`.trim() : '',
     } }, { session, runValidators: true });
     if (manager && manager.organizationId == null) {
       await Employee.updateOne({ _id: manager._id }, { $set: { organizationId: organization._id } }, { session, runValidators: true });

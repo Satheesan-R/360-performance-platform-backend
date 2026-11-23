@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const organizationSchema = new mongoose.Schema({
   singletonKey: { type: String, default: 'company', enum: ['company'], unique: true, immutable: true },
   hierarchyVersion: { type: Number, default: 0, select: false },
+  structureVersion: { type: Number, default: 0, select: false },
   name: { type: String, required: true, trim: true },
   code: { type: String, required: true, trim: true, uppercase: true },
   logoUrl: { type: String, trim: true },
