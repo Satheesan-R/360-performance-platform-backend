@@ -12,6 +12,8 @@ const EmploymentType = require('../src/modules/organization/models/employmenttyp
 const User = require('../src/modules/auth/models/usermodel');
 const Employee = require('../src/modules/auth/models/employee');
 const Cycle = require('../src/modules/review-cycles/models/reviewcycle');
+const Response = require('../src/modules/review-cycles/models/reviewresponse');
+const { participantResult } = require('../src/modules/review-cycles/services/reviewresponses');
 const approvals = require('../src/modules/review-templates/services/templateapproval');
 const cycles = require('../src/modules/review-cycles/services/cycleservice');
 const service = require('../src/modules/review-templates/services/templateservice');
@@ -396,6 +398,11 @@ test('publishing freezes a validated draft and exposes only the assignee?s form'
     startDate: '2026-11-01', endDate: '2026-12-01', status: 'draft', __v: 0,
   };
   t.mock.method(Cycle, 'findOne', (filter) => ({ lean: async () => {
+    const assigned = filter.reviewerAssignments?.$elemMatch;
+    const reviewer = assigned?.reviewerEmployeeId ?? filter['reviewerAssignments.reviewerEmployeeId'];
+    if (filter.status && (filter.status !== saved.status ||
+      !saved.reviewerAssignments.some((entry) => entry.reviewerEmployeeId === reviewer &&
+        (!assigned || entry.employeeId === assigned.employeeId)))) return null;
     if (filter.status && (filter.status !== saved.status ||
       !saved.reviewerAssignments.some((entry) => entry.reviewerEmployeeId === filter['reviewerAssignments.reviewerEmployeeId']))) return null;
     return copy(saved);
@@ -419,6 +426,61 @@ test('publishing freezes a validated draft and exposes only the assignee?s form'
   assert.deepEqual(review.assignments, [{ employeeId: technical, role: 'self', participantName: 'Assigned' }]);
   assert.ok(review.sections.length);
   await assert.rejects(cycles.getAssignedReview(kpi, org), { statusCode: 404 });
+
+  let response = null;
+  t.mock.method(Response, 'findOne', () => ({ select() { return this; }, lean: async () => response }));
+  t.mock.method(Response, 'create', async (value) => {
+    if (response) throw Object.assign(new Error('duplicate'), { code: 11000 });
+    assert.equal(value.reviewerEmployeeId, technical);
+    response = { ...value, version: 0 };
+    return response;
+  });
+  t.mock.method(Response, 'findOneAndUpdate', (filter, change) => ({ lean: async () => {
+    if (response.version !== filter.version || response.submittedAt) return null;
+    response = { ...response, ...change.$set, version: response.version + 1 };
+    return response;
+  } }));
+  t.mock.method(Response, 'find', () => ({ lean: async () => response?.submittedAt ? [response] : [] }));
+  assert.equal((await cycles.getReviewResponse(kpi, technical, user)).version, null);
+  const draft = { version: null, submit: false, sections: [] };
+  assert.equal((await cycles.saveReviewResponse(kpi, technical, user, draft)).version, 0);
+  await assert.rejects(cycles.saveReviewResponse(kpi, technical, user, draft), { statusCode: 409 });
+  await assert.rejects(cycles.saveReviewResponse(kpi, technical, org, draft), { statusCode: 404 });
+  const earlyResults = await cycles.cycleResults(kpi);
+  assert.equal(earlyResults.participants[0].score, null);
+  await assert.rejects(cycles.saveReviewResponse(kpi, technical, user, { ...draft, submit: true, version: 0 }), /Complete Evaluation/);
+
+  const completed = { version: 0, submit: true, sections: [{
+    sectionId: review.sections[0]._id,
+    ratings: { [technical]: 4, [behavioral]: 4, [kpi]: 4 },
+    kpiResults: { [kpi]: 91 },
+    evidenceUrl: 'https://example.test/review-evidence',
+  }] };
+  const submitted = await cycles.saveReviewResponse(kpi, technical, user, completed);
+  assert.ok(submitted.submittedAt);
+  assert.equal((await cycles.getReviewResponse(kpi, technical, user)).version, 1);
+  await assert.rejects(cycles.saveReviewResponse(kpi, technical, user, { ...completed, version: 1 }), { statusCode: 409 });
+  const results = await cycles.cycleResults(kpi);
+  assert.equal(results.participants[0].submitted, 1);
+  assert.equal(results.participants[0].score, 4);
+  assert.equal(results.participants[0].normalizedPercent, 75);
+});
+
+test('final score averages peers before applying role weights', () => {
+  const pinned = framework();
+  const assignments = [
+    { reviewerEmployeeId: user, role: 'self' },
+    { reviewerEmployeeId: technical, role: 'peer' },
+    { reviewerEmployeeId: behavioral, role: 'peer' },
+  ];
+  const responses = [1, 3, 5].map((rating, index) => ({
+    reviewerEmployeeId: assignments[index].reviewerEmployeeId,
+    submittedAt: new Date(),
+    sections: [{ ratings: { [technical]: rating, [behavioral]: rating, [kpi]: rating } }],
+  }));
+  assert.equal(participantResult(assignments, responses.slice(0, 2), pinned).score, null);
+  const { self, peer } = pinned.reviewerWeights;
+  assert.equal(participantResult(assignments, responses, pinned).score, (self + 4 * peer) / (self + peer));
 });
 
 test('HR can save and replace validated reviewer assignments on a draft', async (t) => {
