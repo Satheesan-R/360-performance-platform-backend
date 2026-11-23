@@ -23,6 +23,13 @@ const employeeRelations = [
 function employeeDetails(employee) {
   return {
     ...employee,
+    designation: employee.designation ?? employee.jobTitle ?? null,
+    departmentName: employee.departmentId?.name ?? null,
+    reportingManagerName: employee.managerId
+      ? `${employee.managerId.firstName} ${employee.managerId.lastName}`
+      : null,
+    employmentTypeName: employee.employmentTypeId?.name ?? null,
+    contractStartDate: employee.contractStartDate ?? employee.JoiningDate ?? null,
     role: employee.user?.role ?? null,
     onboardingStatus: employee.user?.status === 'active'
       ? 'completed'
@@ -44,6 +51,10 @@ async function createEmployee(data) {
   const organization = await Organization.findOne({ singletonKey: 'company' });
   const department = data.departmentId != null ? await resolveDepartment(data.departmentId) : null;
   const employmentType = data.employmentTypeId != null ? await resolveEmploymentType(data.employmentTypeId) : null;
+  const manager = data.managerId
+    ? await Employee.findById(objectId(data.managerId, 'managerId')).select('firstName lastName').lean()
+    : null;
+  if (data.managerId && !manager) fail('Reporting manager was not found', 404);
   const employee = await Employee.create({
     organizationId: organization ? organization._id : null,
     employeeNumber: data.employeeNumber || 'EMP-' + Date.now(),
@@ -53,10 +64,15 @@ async function createEmployee(data) {
     personalEmail: data.personalEmail,
     phone: data.phone,
     jobTitle: data.designation,
+    designation: data.designation,
     departmentId: department ? department._id : null,
-    managerId: data.managerId || null,
+    departmentName: department?.name,
+    managerId: manager?._id ?? null,
+    reportingManagerName: manager ? `${manager.firstName} ${manager.lastName}` : null,
     JoiningDate: data.contractStartDate,
+    contractStartDate: data.contractStartDate,
     employmentTypeId: employmentType ? employmentType._id : null,
+    employmentTypeName: employmentType?.name,
     officeLocation: data.officeLocation,
     gender: data.gender,
     dateOfBirth: data.dateOfBirth,
