@@ -1,8 +1,12 @@
 ﻿const nodemailer = require('nodemailer');
 const { env } = require('../config/env');
 
+function getMailFrom() {
+  return env.mailFrom || env.smtpUser;
+}
+
 function ensureMailConfigured() {
-  if (!env.smtpUser || !env.smtpPass || !env.mailFrom) {
+  if (!env.smtpUser || !env.smtpPass || !getMailFrom()) {
     const error = new Error('Email is not configured. Set SMTP_USER, SMTP_PASS and MAIL_FROM before inviting employees');
     error.statusCode = 503;
     throw error;
@@ -20,6 +24,15 @@ function getTransporter() {
     greetingTimeout: 10000,
     socketTimeout: 20000,
   });
+}
+
+function getOptionalTransporter() {
+  try {
+    return getTransporter();
+  } catch (error) {
+    if (error.statusCode === 503) return null;
+    throw error;
+  }
 }
 
 async function deliver(message) {
@@ -40,7 +53,7 @@ async function verifyMailConnection() {
 
 async function sendActivationEmail(email, name, activationUrl) {
   return deliver({
-    from: env.mailFrom,
+    from: getMailFrom(),
     to: email,
     subject: 'Activate your employee account',
     text: 'Hello ' + name + ',\n\nYour employee account is ready. Activate it here:\n' + activationUrl + '\n\nThis link expires in 24 hours. If you did not expect this email, contact HR.',
@@ -49,7 +62,7 @@ async function sendActivationEmail(email, name, activationUrl) {
 
 async function sendOtpEmail(email, otp) {
   return deliver({
-    from: env.mailFrom,
+    from: getMailFrom(),
     to: email,
     subject: 'Your employee account verification code',
     text: 'Your verification code is ' + otp + '. It expires in 2 minutes.',
@@ -57,12 +70,12 @@ async function sendOtpEmail(email, otp) {
 }
 
 async function sendPasswordChangedEmail(email, changedAt) {
-  const transporter = getTransporter();
+  const transporter = getOptionalTransporter();
   if (!transporter) return { status: 'unavailable' };
   let timer;
   try {
     const sending = transporter.sendMail({
-      from: env.mailFrom,
+      from: getMailFrom(),
       to: email,
       subject: 'Your account password was changed',
       text: 'Your 360 Performance password was changed at ' + changedAt.toISOString() +
@@ -77,12 +90,12 @@ async function sendPasswordChangedEmail(email, changedAt) {
 }
 
 async function sendSupportNotification(recipients, number, event) {
-  const transporter = getTransporter();
+  const transporter = getOptionalTransporter();
   if (!transporter) return { status: 'unavailable' };
   let timer;
   try {
     const info = await Promise.race([transporter.sendMail({
-      from: env.mailFrom, bcc: recipients,
+      from: getMailFrom(), bcc: recipients,
       subject: 'Account support update: ' + number,
       text: event + '\nRequest: ' + number + '\nOpen Personal Settings > Account > My Requests or Support Queue to view details.\n' + env.frontendUrl + '/settings?section=account\nNever reply with passwords, OTPs or secret credentials.',
     }), new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('Support email timed out')), 3000); })]);
