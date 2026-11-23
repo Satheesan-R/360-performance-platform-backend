@@ -1,4 +1,6 @@
 const Cycle = require('../models/reviewcycle');
+const Response = require('../models/reviewresponse');
+const { saveResponse, participantResult } = require('./reviewresponses');
 const Snapshot = require('../../review-templates/models/templatesnapshot');
 const { createSnapshot } = require('../../review-templates/services/templatesnapshotservice');
 const User = require('../../auth/models/usermodel');
@@ -232,4 +234,69 @@ async function getCycle(id) {
   return withReviewerAssignments(cycle);
 }
 
-module.exports = { createCycle, listCycles, getCycle, updateCycle, publishCycle, listAssignedCycles, getAssignedReview };
+async function responseScope(cycleId, participantId, userId) {
+  const id = objectId(cycleId, 'cycleId');
+  const participant = objectId(participantId, 'participantId').toLowerCase();
+  const { company, employeeId } = await assignedScope(userId);
+  const filter = { cycleId: id, employeeId: participant, reviewerEmployeeId: employeeId };
+  const cycle = employeeId && await Cycle.findOne({
+    _id: id, organizationId: company._id, status: 'published',
+    reviewerAssignments: { $elemMatch: { employeeId: participant, reviewerEmployeeId: employeeId } },
+  }).lean();
+  if (!cycle || !cycle.reviewerAssignments.some((assignment) =>
+    String(assignment.employeeId) === participant && String(assignment.reviewerEmployeeId) === String(employeeId))) {
+    fail('Assigned review was not found', 404);
+  }
+  return { cycle, filter };
+}
+
+async function publishedConfiguration(cycle) {
+  const snapshot = await Snapshot.findOne({
+    _id: cycle.templateSnapshotId, templateId: cycle.templateId, organizationId: cycle.organizationId,
+  }).lean();
+  if (!snapshot) fail('The published review form is unavailable', 409);
+  return snapshot.configuration;
+}
+
+async function getReviewResponse(cycleId, participantId, userId) {
+  const { filter } = await responseScope(cycleId, participantId, userId);
+  const response = await Response.findOne(filter).select('sections version submittedAt -_id').lean();
+  return response || { sections: [], version: null, submittedAt: null };
+}
+
+async function saveReviewResponse(cycleId, participantId, userId, body) {
+  const { cycle, filter } = await responseScope(cycleId, participantId, userId);
+  return saveResponse(filter, body, await publishedConfiguration(cycle));
+}
+
+async function cycleResults(id) {
+  const cycle = await getCycle(id);
+  if (cycle.status !== 'published') fail('Publish this cycle before viewing results', 409);
+  const [configuration, responses, participants] = await Promise.all([
+    publishedConfiguration(cycle),
+    Response.find({ cycleId: cycle._id, submittedAt: { $ne: null } }).lean(),
+    Employee.find({ _id: { $in: cycle.employeeIds } }).select('firstName lastName').lean(),
+  ]);
+  return {
+    name: cycle.name,
+    maxRating: configuration.framework.ratingScale.max,
+    participants: cycle.employeeIds.map((id) => {
+      const employeeId = String(id);
+      const person = participants.find((employee) => String(employee._id) === employeeId);
+      return {
+        employeeId,
+        name: person ? [person.firstName, person.lastName].filter(Boolean).join(' ') : '',
+        ...participantResult(
+          cycle.reviewerAssignments.filter((assignment) => String(assignment.employeeId) === employeeId),
+          responses.filter((response) => String(response.employeeId) === employeeId),
+          configuration.framework,
+        ),
+      };
+    }),
+  };
+}
+
+module.exports = {
+  createCycle, listCycles, getCycle, updateCycle, publishCycle, listAssignedCycles, getAssignedReview,
+  getReviewResponse, saveReviewResponse, cycleResults,
+};

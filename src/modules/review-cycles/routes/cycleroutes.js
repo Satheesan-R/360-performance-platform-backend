@@ -32,6 +32,21 @@ router.post('/:id/publish', allowRoles('hr'), draftJson, async (req, res, next) 
   catch (error) { next(error); }
 });
 
+router.get('/assigned/:id/participants/:participantId/response', async (req, res, next) => {
+  try { res.json({ response: await service.getReviewResponse(req.params.id, req.params.participantId, req.user.id) }); }
+  catch (error) { next(error); }
+});
+
+router.put('/assigned/:id/participants/:participantId/response', draftJson, async (req, res, next) => {
+  try { res.json({ response: await service.saveReviewResponse(req.params.id, req.params.participantId, req.user.id, req.body) }); }
+  catch (error) { next(error); }
+});
+
+router.get('/:id/results', allowRoles('hr', 'admin'), async (req, res, next) => {
+  try { res.json({ results: await service.cycleResults(req.params.id) }); }
+  catch (error) { next(error); }
+});
+
 router.get('/:id', allowRoles('hr', 'admin'), async (req, res, next) => {
   try { res.json({ cycle: await service.getCycle(req.params.id) }); }
   catch (error) { next(error); }
