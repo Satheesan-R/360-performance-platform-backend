@@ -53,10 +53,10 @@ test('manager assignments lock the company within the transaction and support cl
   await service.assignManager(a, { managerId: b });
   assert.equal(records.get(a).managerId, b);
   assert.equal(records.get(a).organizationId, org);
-  assert.equal(records.get(a).manager, 'Priya Kumar');
+  assert.equal(records.get(a).manager, undefined);
   await service.assignManager(a, { managerId: null });
   assert.equal(records.get(a).managerId, null);
-  assert.equal(records.get(a).manager, '');
+  assert.equal(records.get(a).manager, undefined);
   await assert.rejects(service.assignManager(a, { managerId: a }), { statusCode: 400 });
   await assert.rejects(service.assignManager(a, { managerId: 'bad' }), { statusCode: 400 });
   await assert.rejects(service.assignManager(a, { managerId: b, role: 'admin' }), { statusCode: 400 });

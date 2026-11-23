@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const { env } = require('./config/env');
 const authRoutes = require('./modules/auth/routes/authroutes');
@@ -8,6 +8,9 @@ const departmentRoutes = require('./modules/organization/routes/departmentroutes
 const teamRoutes = require('./modules/organization/routes/teamroutes');
 const employmentTypeRoutes = require('./modules/organization/routes/employmenttyperoutes');
 const hierarchyRoutes = require('./modules/organization/routes/hierarchyroutes');
+const frameworkRoutes = require('./modules/performance-framework/routes/frameworkroutes');
+const templateRoutes = require('./modules/review-templates/routes/templateroutes');
+const cycleRoutes = require('./modules/review-cycles/routes/cycleroutes');
 const settingsRoutes = require('./modules/settings/routes/settingsroutes');
 
 const app = express();
@@ -17,6 +20,7 @@ app.use(cors(
   ));
 // Cropped photos use a larger body limit only on the authenticated profile endpoint.
 app.use('/api/settings/profile', require('./middleware/auth').authenticate, express.json({ limit: '250kb' }));
+app.use('/api/review-cycles', cycleRoutes);
 app.use(express.json({ limit: '20kb'}
    ));
 
@@ -29,6 +33,8 @@ app.use('/api/employment-types', employmentTypeRoutes);
 app.use('/api/hierarchy', hierarchyRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/support', require('./modules/support/routes/supportroutes'));
+app.use('/api/performance-frameworks', frameworkRoutes);
+app.use('/api/review-templates', templateRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
