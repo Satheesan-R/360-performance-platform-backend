@@ -258,9 +258,12 @@ test('HR configuration targets department managers and validates selected depart
   assert.deepEqual(snapshot.configuration.departmentIds, [departmentId]);
 });
 
-test('HR template targeting rejects other workflow levels and malformed settings', () => {
-  for (const targetRole of ['employee', 'tech_lead', 'hr', 'admin']) {
-    assert.throws(() => parseTemplate({ targetRole }), /department_manager only/);
+test('HR template targeting accepts review participants and rejects malformed settings', () => {
+  for (const targetRole of ['employee', 'tech_lead', 'department_manager']) {
+    assert.deepEqual(parseTemplate({ targetRole }), { targetRole });
+  }
+  for (const targetRole of ['hr', 'admin']) {
+    assert.throws(() => parseTemplate({ targetRole }), { statusCode: 400 });
   }
 
   for (const data of [
@@ -344,6 +347,78 @@ test('HR submits, admin approves and HR creates an editable manager-only draft c
   assert.equal(state.template.approvedBy, null);
   await assert.rejects(cycles.createCycle(request, user), { statusCode: 409 });
   assert.equal(state.snapshots.length, 0);
+});
+
+for (const targetRole of ['employee', 'tech_lead']) {
+  test('HR can create a draft cycle for an approved ' + targetRole + ' template', async (t) => {
+    setup(t);
+    await service.createTemplate({ ...body(), status: 'active', targetRole }, user);
+    await approvals.submit(id, user, {});
+    await approvals.decide(id, org, true, {});
+    t.mock.method(Employee, 'find', () => ({
+      select() { return this; },
+      lean: async () => [{ _id: technical, employmentTypeId: type, departmentId: null }],
+    }));
+    const accounts = t.mock.method(User, 'countDocuments', async (filter) => {
+      assert.equal(filter.role, targetRole);
+      assert.equal(filter.status, 'active');
+      return 1;
+    });
+    t.mock.method(Cycle, 'create', async (data) => data);
+    const request = {
+      name: 'Annual Review', templateId: id, employeeIds: [technical],
+      startDate: '2026-11-01', endDate: '2026-12-01',
+    };
+    assert.equal((await cycles.createCycle(request, user)).targetRole, targetRole);
+    accounts.mock.mockImplementation(async () => 0);
+    await assert.rejects(cycles.createCycle(request, user), { statusCode: 400 });
+  });
+}
+
+test('publishing freezes a validated draft and exposes only the assignee?s form', async (t) => {
+  const state = setup(t);
+  await service.createTemplate({ ...body(), status: 'active', targetRole: 'employee' }, user);
+  await approvals.submit(id, user, {});
+  await approvals.decide(id, org, true, {});
+  t.mock.method(Employee, 'find', () => ({
+    select() { return this; },
+    lean: async () => [{ _id: technical, employmentTypeId: type, departmentId: null, firstName: 'Assigned' }],
+  }));
+  t.mock.method(User, 'countDocuments', async () => 1);
+  t.mock.method(User, 'findOne', (filter) => ({
+    select() { return this; },
+    lean: async () => ({ employee: filter._id === user ? technical : behavioral }),
+  }));
+  const version = state.template.__v;
+  let saved = {
+    _id: kpi, organizationId: org, name: 'Annual', templateId: id,
+    employeeIds: [technical], departmentIds: [], reviewerAssignments: [],
+    startDate: '2026-11-01', endDate: '2026-12-01', status: 'draft', __v: 0,
+  };
+  t.mock.method(Cycle, 'findOne', (filter) => ({ lean: async () => {
+    if (filter.status && (filter.status !== saved.status ||
+      !saved.reviewerAssignments.some((entry) => entry.reviewerEmployeeId === filter['reviewerAssignments.reviewerEmployeeId']))) return null;
+    return copy(saved);
+  } }));
+  t.mock.method(Cycle, 'findOneAndUpdate', (filter, change) => ({ lean: async () => {
+    if (filter.__v !== saved.__v || filter.status !== saved.status) return null;
+    saved = { ...saved, ...change.$set, __v: saved.__v + 1 };
+    return saved;
+  } }));
+  await assert.rejects(cycles.getAssignedReview(kpi, user), { statusCode: 404 });
+  await assert.rejects(cycles.publishCycle(kpi, { version: 0 }, user), /at least one reviewer/);
+  saved.reviewerAssignments = [{ employeeId: technical, reviewerEmployeeId: technical, role: 'self' }];
+  const published = await cycles.publishCycle(kpi, { version: 0 }, user);
+  assert.equal(published.status, 'published');
+  assert.equal(published.templateVersion, version);
+  assert.equal(state.snapshots.length, 1);
+  await assert.rejects(cycles.publishCycle(kpi, { version: 0 }, user), { statusCode: 409 });
+  await service.updateTemplate(id, { name: 'Changed template' });
+  const review = await cycles.getAssignedReview(kpi, user);
+  assert.notEqual(review.templateName, 'Changed template');
+  assert.deepEqual(review.assignments, [{ employeeId: technical, role: 'self', participantName: 'Assigned' }]);
+  assert.ok(review.sections.length);
+  await assert.rejects(cycles.getAssignedReview(kpi, org), { statusCode: 404 });
 });
 
 test('HR can save and replace validated reviewer assignments on a draft', async (t) => {
