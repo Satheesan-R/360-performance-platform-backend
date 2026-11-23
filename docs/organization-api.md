@@ -79,14 +79,15 @@ When selected, `headEmployeeId` is populated with `_id`, `employeeNumber`,
 `firstName`, `lastName`, and `workEmail`. Search matches name or code literally,
 without treating input as a regular expression. Page starts at 1; limit is 1–100.
 PATCH accepts any subset of create fields. Deactivating a department retains
-existing employees and its head. There is no delete endpoint.
+existing employees and its head. DELETE /api/departments/:id now performs the
+same non-destructive deactivation; it does not remove the department record.
 
 ## Employee integration and existing records
 
 New onboarding requests to `POST /api/employees` can include `departmentId`.
-The department must exist and be active. When an ID is supplied, it determines
-the legacy `department` name even if that name is also supplied in the request.
-Existing requests with just the string `department` continue to work.
+The department must exist and be active. Employee records store only the
+`departmentId` reference; clients should use the populated department name for
+display.
 
 `PATCH /api/employees/:id/department` accepts:
 
@@ -97,9 +98,8 @@ Existing requests with just the string `department` continue to work.
 Send `{ "departmentId": null }` to clear the assignment. The response is
 `{ "employee": { ... } }`. Employee listing and this assignment response populate
 `departmentId` with the department's `_id`, `name`, `code`, and `status`.
-The old `department` string remains available for the current frontend. After a
-department rename, use populated `departmentId.name` as the current display name;
-the legacy string is not automatically rewritten for every employee.
+After a department rename, use populated `departmentId.name` as the current
+display name.
 
 Existing string assignments are not automatically migrated or guessed. Create
 the matching departments, inspect employees, then explicitly assign each employee
@@ -140,7 +140,8 @@ employment types, and role definitions all require an `organizationId` reference
 Team, employment-type, and role-definition models are available, with unique
 codes per organization. Team management endpoints are available as described below.
 Employment-type management endpoints are available as described below. Role-definition
-management endpoints and employee team integration are not yet implemented.
+management endpoints are not yet implemented. Employee team assignment is
+available through PATCH /api/employees/:id/team.
 Role definitions currently store permission strings; login
 and route authorization still enforce the existing fixed user roles. `MANAGER`
 and the label `HOD` do not automatically become login roles. Permission strings
@@ -162,8 +163,9 @@ Description is limited to 2000 characters, logo URL to 2048, other text to 200.
 Run `npm test`. Tests use mocked model operations and local HTTP requests;
 they do not connect to MongoDB or send email. Before deployment, verify setup,
 department creation, uniqueness indexes, assignment, and counts against a test
-MongoDB database. Frontend pages, employee team membership, and configurable
-permissions are future milestones.
+MongoDB database. Frontend pages and configurable permissions are future milestones.
+See the [department and team views guide](department-team-views.md) for detail,
+employee membership, hierarchy, and safe deactivation endpoints.
 
 ## Reporting hierarchy
 
@@ -178,7 +180,7 @@ permissions are future milestones.
 
 Relationships live in `employees.managerId`, referencing another Employee. No
 separate hierarchy collection is used. Nodes include employeeNumber, firstName,
-lastName, jobTitle, departmentId, teamId, managerId, and the legacy text fields.
+lastName, jobTitle, departmentId, teamId, and managerId.
 Department and team are populated with name/code/status; manager is populated
 with firstName/lastName/employeeNumber/jobTitle. Use managerId._id to draw edges.
 The frontend owns organization chart rendering and manager selection.
@@ -189,9 +191,8 @@ onboarding records automatically receive the configured company ID. For this
 single-company application, existing employees with missing/null organizationId
 are treated as belonging to the company. An assignment fills organizationId on
 the employee and selected manager if missing. Explicit other-company IDs are
-never accepted. Old text manager names are not guessed or migrated; HR must
-assign them explicitly. The text manager field remains transitional; use managerId
-for current reporting and future manager-reviewer selection.
+never accepted. Manager assignment uses `managerId` directly; manager names come
+from the populated employee reference.
 
 Manager updates use MongoDB transactions and a shared organization write to
 serialize concurrent hierarchy edits, preventing simultaneous requests from
@@ -204,7 +205,7 @@ invalid/circular/cross-organization assignments return 400, and a broken ancesto
 chain with a missing employee returns 409.
 
 The optional employee teamId reference is now available for display, but team
-membership assignment is not implemented here. Hierarchy is based on reporting
+membership assignment is available through the structure APIs. Hierarchy is based on reporting
 relationships, not inferred from department heads, team leads, or access roles.
 
 ## Employment types
@@ -241,15 +242,13 @@ and unique within the company. Deactivation preserves employee references but
 rejects new assignments. These endpoints require HR/admin access and company setup.
 They use the same pagination, literal search, and error conventions as Teams.
 
-`POST /api/employees` now accepts `employmentTypeId`; it takes precedence over the
-legacy string. `PATCH /api/employees/:id/employment-type` accepts only
+`POST /api/employees` accepts `employmentTypeId`. `PATCH /api/employees/:id/employment-type` accepts only
 `{ "employmentTypeId": "<id>" }` and assigns an existing active classification.
 Employee listing and assignment responses populate that reference with name,
 code, and isActive. Existing employees are not automatically migrated; use this
 PATCH endpoint after reviewing their classifications. Renaming labels preserves
-IDs; display the populated name. Legacy strings remain supported, with starter
-codes mapped to intern, probation, and full-time; custom codes use lowercase.
-The legacy string is transitional; future review routing must use employmentTypeId.
+IDs; display the populated name. Employee records store only the
+`employmentTypeId` reference.
 
 Workflow execution, default workflow selection, and optional review cycle types
 are deferred until those modules exist. There are no hard-coded review policies.
@@ -290,6 +289,7 @@ relationships return 400, and missing company setup or duplicate codes return 40
 
 Deactivation keeps the team and its relationships. Existing teams remain editable
 when their department becomes inactive, but cannot be moved into an inactive
-department or reactivated under one. This API does not assign employee members;
-there is no employee teamId field or member count yet. Use these endpoints for
+department or reactivated under one. Team rows now include employeeCount, and
+members are assigned with PATCH /api/employees/:id/team. See the separate
+[department/team detail guide](department-team-views.md). Use these endpoints for
 the frontend `/hr/organization/teams` page.

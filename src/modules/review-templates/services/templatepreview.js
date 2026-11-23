@@ -5,6 +5,7 @@ const {
   frameworkForTemplate,
   requireTemplateReady,
   validateEmploymentTypes,
+  employmentTypeLookup,
   validateDepartments,
 } = require('./templaterelations');
 const { effectiveCriteria } = require('../../performance-framework/services/scoringpreview');
@@ -19,6 +20,9 @@ async function renderPreview(template, checkEmploymentTypes = !template.framewor
     requireTemplateReady(template, framework);
   }
   catch (error) { if (error.statusCode !== 400) throw error; validation = { ready: false, message: error.message }; }
+  const effectiveEmploymentTypeIds = template.employmentTypeIds?.length
+    ? template.employmentTypeIds : framework.applicableEmploymentTypeIds || [];
+  const types = await employmentTypeLookup(effectiveEmploymentTypeIds, template.organizationId);
   const resolve = (ids, items) => (ids || []).map((id) => (items || []).find((item) => String(item._id) === String(id)) || { _id: id, missing: true });
   return {
     templateId: template._id, name: template.name, description: template.description || '', status: template.status,
@@ -30,7 +34,8 @@ async function renderPreview(template, checkEmploymentTypes = !template.framewor
     frameworkId: template.frameworkId, frameworkName: framework.name,
     frameworkVersion: framework.__v ?? 0, usesFrozenFramework: Boolean(template.frameworkSnapshot),
     employmentTypeIds: template.employmentTypeIds || [],
-    effectiveEmploymentTypeIds: template.employmentTypeIds?.length ? template.employmentTypeIds : framework.applicableEmploymentTypeIds || [],
+    effectiveEmploymentTypeIds,
+    effectiveEmploymentTypes: effectiveEmploymentTypeIds.map((id) => types.get(String(id))).filter(Boolean),
     ratingScale: framework.ratingScale ?? null, validation,
     criteriaWeights: validation.ready ? effectiveCriteria(framework) : [],
     sections: (template.sections || []).map((section) => ({

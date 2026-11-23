@@ -3,6 +3,8 @@ const Organization = require('../models/organization');
 const Department = require('../models/department');
 const Employee = require('../../auth/models/employee');
 const { fail, objectId, fields, pagination } = require('./validation');
+const { withStructureLock } = require('./structureassignments');
+const { employeeScope } = require('./structurequeries');
 
 const allowed = ['name', 'code', 'departmentId', 'teamLeadEmployeeId', 'description', 'status'];
 const populate = [
@@ -40,16 +42,33 @@ async function createTeam(body) {
 async function updateTeam(id, body) {
   objectId(id, 'teamId');
   const data = fields(body, allowed);
-  const organization = await company();
-  const team = await Team.findOne({ _id: id, organizationId: organization._id });
-  if (!team) fail('Team was not found', 404);
-  const activating = data.status === 'active' && team.status !== 'active';
-  const relationships = { ...data };
-  if (activating && !relationships.departmentId) relationships.departmentId = String(team.departmentId);
-  await validateRelationships(relationships, organization._id, activating || Boolean(data.departmentId));
-  Object.assign(team, data);
-  await team.save();
-  return team.populate(populate);
+
+  await withStructureLock(async (organization, session) => {
+    const team = await Team.findOne({ _id: id, organizationId: organization._id }).session(session);
+
+    if (!team) {
+      fail('Team was not found', 404);
+    }
+
+    const moving = data.departmentId && String(data.departmentId) !== String(team.departmentId);
+
+    if (moving && await Employee.exists({ teamId: team._id }).session(session)) {
+      fail('Remove or reassign the team employees before moving it to another department', 409);
+    }
+
+    const activating = data.status === 'active' && team.status !== 'active';
+    const relationships = { ...data };
+
+    if (activating && !relationships.departmentId) {
+      relationships.departmentId = String(team.departmentId);
+    }
+
+    await validateRelationships(relationships, organization._id, activating || Boolean(data.departmentId));
+    Object.assign(team, data);
+    await team.save({ session });
+  });
+
+  return Team.findOne({ _id: id }).populate(populate);
 }
 
 async function listTeams(query) {
@@ -70,7 +89,23 @@ async function listTeams(query) {
     Team.find(filter).sort({ name: 1, _id: 1 }).skip((page - 1) * limit).limit(limit).populate(populate).lean(),
     Team.countDocuments(filter),
   ]);
-  return { teams, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+
+  const counts = await Employee.aggregate([
+    { $match: { teamId: { $in: teams.map((team) => team._id) }, ...employeeScope(organization._id) } },
+    { $group: { _id: { teamId: '$teamId', departmentId: '$departmentId' }, count: { $sum: 1 } } },
+  ]);
+  const countByTeam = new Map(counts.map((item) => [
+    `${item._id.teamId}:${item._id.departmentId}`,
+    item.count,
+  ]));
+
+  return {
+    teams: teams.map((team) => ({
+      ...team,
+      employeeCount: countByTeam.get(`${team._id}:${team.departmentId?._id ?? team.departmentId}`) || 0,
+    })),
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  };
 }
 
 module.exports = { createTeam, updateTeam, listTeams };

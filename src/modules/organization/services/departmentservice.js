@@ -1,9 +1,24 @@
 const Department = require('../models/department');
 const Organization = require('../models/organization');
 const Employee = require('../../auth/models/employee');
+const Team = require('../models/team');
 const { fail, objectId, fields, pagination } = require('./validation');
 
 const allowed = ['name', 'code', 'description', 'headEmployeeId', 'status'];
+
+function departmentFields(body, required = []) {
+  if (body && typeof body === 'object' && !Array.isArray(body) && Object.hasOwn(body, 'departmentHeadId')) {
+    const { departmentHeadId, ...rest } = body;
+
+    if (Object.hasOwn(rest, 'headEmployeeId') && rest.headEmployeeId !== departmentHeadId) {
+      fail('departmentHeadId and headEmployeeId must agree');
+    }
+
+    body = { ...rest, headEmployeeId: departmentHeadId };
+  }
+
+  return fields(body, allowed, required);
+}
 
 async function validateHead(data) {
   if (data.headEmployeeId && !await Employee.exists({ _id: data.headEmployeeId })) {
@@ -12,7 +27,7 @@ async function validateHead(data) {
 }
 
 async function createDepartment(body) {
-  const data = fields(body, allowed, ['name', 'code']);
+  const data = departmentFields(body, ['name', 'code']);
   await validateHead(data);
   const organization = await Organization.findOne({ singletonKey: 'company' });
   if (!organization) fail('Set up the organization before creating departments', 409);
@@ -22,7 +37,7 @@ async function createDepartment(body) {
 
 async function updateDepartment(id, body) {
   objectId(id, 'departmentId');
-  const data = fields(body, allowed);
+  const data = departmentFields(body);
   const department = await Department.findById(id);
   if (!department) fail('Department was not found', 404);
   await validateHead(data);
@@ -53,8 +68,18 @@ async function listDepartments(query) {
     { $group: { _id: '$departmentId', count: { $sum: 1 } } },
   ]);
   const countById = new Map(counts.map((item) => [String(item._id), item.count]));
+  const teamCounts = await Team.aggregate([
+    { $match: { departmentId: { $in: departments.map((department) => department._id) } } },
+    { $group: { _id: '$departmentId', count: { $sum: 1 } } },
+  ]);
+  const teamCountById = new Map(teamCounts.map((item) => [String(item._id), item.count]));
+
   return {
-    departments: departments.map((department) => ({ ...department, employeeCount: countById.get(String(department._id)) || 0 })),
+    departments: departments.map((department) => ({
+      ...department,
+      employeeCount: countById.get(String(department._id)) || 0,
+      teamCount: teamCountById.get(String(department._id)) || 0,
+    })),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
 }
@@ -76,10 +101,26 @@ async function assignDepartment(employeeId, body) {
   const employee = await Employee.findById(employeeId);
   if (!employee) fail('Employee was not found', 404);
   employee.departmentId = department ? department._id : null;
-  // Keep the old field readable by the current frontend during its transition.
-  employee.department = department ? department.name : '';
   await employee.save();
   return employee.populate('departmentId', 'name code status');
 }
 
-module.exports = { createDepartment, updateDepartment, listDepartments, resolveDepartment, assignDepartment };
+async function departmentSummary() {
+  const [total, active, inactive] = await Promise.all([
+    Department.countDocuments({}),
+    Department.countDocuments({ status: 'active' }),
+    Department.countDocuments({ status: 'inactive' }),
+  ]);
+
+  return { total, active, inactive };
+}
+
+module.exports = {
+  createDepartment,
+  updateDepartment,
+  listDepartments,
+  resolveDepartment,
+  assignDepartment,
+  departmentSummary,
+  departmentFields,
+};

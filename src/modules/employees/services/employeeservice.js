@@ -3,16 +3,47 @@ const Employee = require('../../auth/models/employee');
 const User = require('../../auth/models/usermodel');
 const Organization = require('../../organization/models/organization');
 const AccountActivation = require('../../auth/models/account-activation');
-const { sendActivationEmail } = require('../../../services/mailservice');
+const {
+  sendActivationEmail,
+  ensureMailConfigured,
+} = require('../../../services/mailservice');
 const { env } = require('../../../config/env');
 const { resolveDepartment } = require('../../organization/services/departmentservice');
-const { resolveEmploymentType, legacyValue } = require('../../organization/services/employmenttypeservice');
+const { resolveEmploymentType } = require('../../organization/services/employmenttypeservice');
+const { objectId, fail } = require('../../organization/services/validation');
+
+const employeeRelations = [
+  { path: 'user', select: 'email role status' },
+  { path: 'departmentId', select: 'name code status' },
+  { path: 'employmentTypeId', select: 'name code isActive' },
+  { path: 'managerId', select: 'firstName lastName employeeNumber jobTitle' },
+  { path: 'teamId', select: 'name code status' },
+];
+
+function employeeDetails(employee) {
+  return {
+    ...employee,
+    designation: employee.designation ?? employee.jobTitle ?? null,
+    departmentName: employee.departmentId?.name ?? null,
+    reportingManagerName: employee.managerId
+      ? `${employee.managerId.firstName} ${employee.managerId.lastName}`
+      : null,
+    employmentTypeName: employee.employmentTypeId?.name ?? null,
+    contractStartDate: employee.contractStartDate ?? employee.JoiningDate ?? null,
+    role: employee.user?.role ?? null,
+    onboardingStatus: employee.user?.status === 'active'
+      ? 'completed'
+      : employee.onboardingStatus,
+  };
+}
 
 async function createEmployee(data) {
   const email = data.companyEmail?.toLowerCase().trim();
   if (!data.fullName || !email) {
     throw new Error('Full name and company email are required');
   }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Company email must be a valid recipient email address');
+  ensureMailConfigured();
 
   if (await User.exists({ email })) throw new Error('A user with this email already exists');
 
@@ -20,6 +51,10 @@ async function createEmployee(data) {
   const organization = await Organization.findOne({ singletonKey: 'company' });
   const department = data.departmentId != null ? await resolveDepartment(data.departmentId) : null;
   const employmentType = data.employmentTypeId != null ? await resolveEmploymentType(data.employmentTypeId) : null;
+  const manager = data.managerId
+    ? await Employee.findById(objectId(data.managerId, 'managerId')).select('firstName lastName').lean()
+    : null;
+  if (data.managerId && !manager) fail('Reporting manager was not found', 404);
   const employee = await Employee.create({
     organizationId: organization ? organization._id : null,
     employeeNumber: data.employeeNumber || 'EMP-' + Date.now(),
@@ -29,12 +64,15 @@ async function createEmployee(data) {
     personalEmail: data.personalEmail,
     phone: data.phone,
     jobTitle: data.designation,
-    department: department ? department.name : data.department,
+    designation: data.designation,
     departmentId: department ? department._id : null,
-    manager: data.reportingManager,
+    departmentName: department?.name,
+    managerId: manager?._id ?? null,
+    reportingManagerName: manager ? `${manager.firstName} ${manager.lastName}` : null,
     JoiningDate: data.contractStartDate,
-    employmentType: employmentType ? legacyValue(employmentType) : data.employmentType,
+    contractStartDate: data.contractStartDate,
     employmentTypeId: employmentType ? employmentType._id : null,
+    employmentTypeName: employmentType?.name,
     officeLocation: data.officeLocation,
     gender: data.gender,
     dateOfBirth: data.dateOfBirth,
@@ -58,30 +96,40 @@ async function createEmployee(data) {
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
 
-  const activationUrl = env.frontendUrl + '/activate-account?token=' + token;
-  await sendActivationEmail(email, data.fullName, activationUrl);
+  const activationUrl = env.frontendUrl + '/auth/activate?token=' + token;
+  let emailDelivery;
+  try {
+    emailDelivery = await sendActivationEmail(email, data.fullName, activationUrl);
+  } catch {
+    // The employee already exists. Report delivery separately to avoid duplicate retries.
+    emailDelivery = { status: 'failed', recipient: email, message: 'Employee created, but the activation email could not be sent. Check SMTP settings and the recipient address' };
+  }
 
-  return { employee, activationUrl };
+  return { employee, activationUrl, emailDelivery };
 }
 
 async function listEmployees() {
   const employees = await Employee.find({})
     .sort({ createdAt: -1, _id: -1 })
-    .populate('user', 'email role status')
-    .populate('departmentId', 'name code status')
-    .populate('employmentTypeId', 'name code isActive')
-    .populate('managerId', 'firstName lastName employeeNumber jobTitle')
-    .populate('teamId', 'name code status')
+    .populate(employeeRelations)
     .lean();
 
   // Accounts activated before onboarding status was synchronized are complete too.
-  return employees.map((employee) => ({
-    ...employee,
-    onboardingStatus: employee.user?.status === 'active'
-      ? 'completed'
-      : employee.onboardingStatus,
-  }));
+  return employees.map(employeeDetails);
 }
 
-module.exports = { createEmployee, listEmployees };
+async function getEmployee(id) {
+  objectId(id, 'employeeId');
 
+  const employee = await Employee.findById(id)
+    .populate(employeeRelations)
+    .lean();
+
+  if (!employee) {
+    fail('Employee was not found', 404);
+  }
+
+  return employeeDetails(employee);
+}
+
+module.exports = { createEmployee, listEmployees, getEmployee };

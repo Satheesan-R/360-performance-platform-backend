@@ -2,6 +2,8 @@
 
 Single-company Express and MongoDB backend.
 
+Initial admin login: [setup instructions](docs/admin-setup.md) (`npm run create:admin`).
+
 Organization Overview and Departments API: [contract and integration guide](docs/organization-api.md).
 
 Performance Framework, criteria, scoring, and snapshots: [API and frontend integration guide](docs/performance-framework-api.md).

@@ -81,7 +81,7 @@ test('editing classification preserves employee references and inactive types re
   t.mock.method(Employee, 'findById', async () => employee);
   await service.assignEmploymentType(id, { employmentTypeId: id });
   assert.equal(employee.employmentTypeId, id);
-  assert.equal(employee.employmentType, 'intern');
+  assert.equal(employee.employmentType, undefined);
   await service.updateEmploymentType(id, { name: 'Internship', isActive: false });
   assert.equal(employee.employmentTypeId, id);
   await assert.rejects(service.assignEmploymentType(id, { employmentTypeId: id }), { statusCode: 400 });
@@ -89,8 +89,7 @@ test('editing classification preserves employee references and inactive types re
   await assert.rejects(service.assignEmploymentType(id, { employmentTypeId: null }), { statusCode: 400 });
   lookup.mock.mockImplementation(async () => null);
   await assert.rejects(service.resolveEmploymentType(id), { statusCode: 404 });
-  assert.equal(service.legacyValue({ code: 'PERMANENT' }), 'full-time');
-  assert.equal(service.legacyValue({ code: 'CONTRACT' }), 'contract');
+
 });
 
 test('employment type routes exist, enforce HR access and return expected responses', async (t) => {

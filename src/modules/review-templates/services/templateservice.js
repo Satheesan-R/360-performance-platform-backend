@@ -20,6 +20,17 @@ async function getTemplate(id) {
   return template;
 }
 
+async function getTemplateOverview(id) {
+  const template = await getTemplate(id);
+  const framework = template.employmentTypeIds?.length ? null
+    : relations.frameworkForTemplate(template) || await relations.resolveFramework(template);
+  const effectiveEmploymentTypeIds = framework
+    ? framework.applicableEmploymentTypeIds || [] : template.employmentTypeIds;
+  const types = await relations.employmentTypeLookup(effectiveEmploymentTypeIds, template.organizationId);
+  return { ...template, effectiveEmploymentTypeIds,
+    effectiveEmploymentTypes: effectiveEmploymentTypeIds.map((typeId) => types.get(String(typeId))).filter(Boolean) };
+}
+
 async function createTemplate(body, userId) {
   const data = parseTemplate(body, true);
   objectId(userId, 'createdBy');
@@ -114,14 +125,23 @@ async function listTemplates(query) {
     filter.$or = [{ name: { $regex: escaped, $options: 'i' } }, { description: { $regex: escaped, $options: 'i' } }];
   }
   const [templates, total] = await Promise.all([
-    Template.find(filter).select('-frameworkSnapshot').sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit)
-      .populate('frameworkId', 'name status')
-      .populate('employmentTypeIds', 'name code isActive')
+    Template.find(filter).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit)
+      .populate('frameworkId', 'name status applicableEmploymentTypeIds')
       .populate('departmentIds', 'name code status')
       .lean(),
     Template.countDocuments(filter),
   ]);
-  return { templates, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  const effectiveIds = ({ employmentTypeIds, frameworkSnapshot, frameworkId }) => employmentTypeIds?.length
+    ? employmentTypeIds : (frameworkSnapshot || frameworkId)?.applicableEmploymentTypeIds || [];
+  const types = await relations.employmentTypeLookup([...new Set(templates
+    .flatMap((template) => effectiveIds(template).map(String)))], organization._id);
+  const resolveTypes = (ids) => ids.map((id) => types.get(String(id))).filter(Boolean);
+  const overviews = templates.map(({ frameworkSnapshot, ...template }) => {
+    const effectiveEmploymentTypeIds = effectiveIds({ ...template, frameworkSnapshot });
+    return { ...template, employmentTypeIds: resolveTypes(template.employmentTypeIds || []),
+      effectiveEmploymentTypeIds, effectiveEmploymentTypes: resolveTypes(effectiveEmploymentTypeIds) };
+  });
+  return { templates: overviews, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
 }
 
-module.exports = { createTemplate, getTemplate, updateTemplate, listTemplates };
+module.exports = { createTemplate, getTemplate, getTemplateOverview, updateTemplate, listTemplates };

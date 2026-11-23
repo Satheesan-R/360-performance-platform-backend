@@ -90,16 +90,16 @@ test('rejects missing or inactive departments for new assignments', async (t) =>
   await assert.rejects(service.resolveDepartment('507f1f77bcf86cd799439011'), { statusCode: 400 });
 });
 
-test('department assignment updates ID and legacy name; null removes both', async (t) => {
+test('department assignment updates ID; null removes the assignment', async (t) => {
   const employee = { save: async () => {}, populate: async () => employee };
   t.mock.method(Employee, 'findById', async () => employee);
   t.mock.method(Department, 'findById', async () => ({ _id: '507f1f77bcf86cd799439011', name: 'Engineering', status: 'active' }));
   await service.assignDepartment('507f1f77bcf86cd799439012', { departmentId: '507f1f77bcf86cd799439011' });
   assert.equal(employee.departmentId, '507f1f77bcf86cd799439011');
-  assert.equal(employee.department, 'Engineering');
+  assert.equal(employee.department, undefined);
   await service.assignDepartment('507f1f77bcf86cd799439012', { departmentId: null });
   assert.equal(employee.departmentId, null);
-  assert.equal(employee.department, '');
+  assert.equal(employee.department, undefined);
   await assert.rejects(service.assignDepartment('507f1f77bcf86cd799439012', { departmentId: null, role: 'admin' }), { statusCode: 400 });
 });
 
@@ -121,10 +121,12 @@ test('lists paginated departments with literal search and assignment counts', as
   t.mock.method(Department, 'find', (value) => { filter = value; return query; });
   t.mock.method(Department, 'countDocuments', async () => 12);
   t.mock.method(Employee, 'aggregate', async () => [{ _id: 'department-1', count: 3 }]);
+  t.mock.method(Team, 'aggregate', async () => [{ _id: 'department-1', count: 2 }]);
   const result = await service.listDepartments({ search: 'a.*', status: 'active', page: '2', limit: '10' });
   assert.equal(filter.$or[0].name.$regex, 'a\\.\\*');
   assert.equal(filter.status, 'active');
   assert.deepEqual(result.departments.map((department) => department.employeeCount), [3, 0]);
+  assert.deepEqual(result.departments.map((department) => department.teamCount), [2, 0]);
   assert.deepEqual(result.pagination, { page: 2, limit: 10, total: 12, totalPages: 2 });
 });
 
