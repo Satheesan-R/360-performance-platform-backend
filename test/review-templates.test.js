@@ -502,7 +502,7 @@ test('HR can save and replace validated reviewer assignments on a draft', async 
     assert.equal(status, 'active');
     return {
       select() { return this; },
-      lean: async () => employee.$in.map((employee) => ({ employee, role: 'admin' })),
+      lean: async () => employee.$in.map((employee) => ({ employee, role: employee === peerId ? 'employee' : 'admin' })),
     };
   });
   let saved;
@@ -521,7 +521,8 @@ test('HR can save and replace validated reviewer assignments on a draft', async 
   } }));
 
   const self = { employeeId: technical, reviewerEmployeeId: technical, role: 'self' };
-  const peer = { employeeId: technical, reviewerEmployeeId: behavioral, role: 'peer' };
+  const peerId = '507f1f77bcf86cd799439019';
+  const peer = { employeeId: technical, reviewerEmployeeId: peerId, role: 'peer' };
   const manager = { employeeId: technical, reviewerEmployeeId: kpi, role: 'manager' };
   const request = {
     name: 'Assignments', templateId: id, employeeIds: [technical, behavioral],
