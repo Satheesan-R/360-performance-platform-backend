@@ -403,8 +403,6 @@ test('publishing freezes a validated draft and exposes only the assignee?s form'
     if (filter.status && (filter.status !== saved.status ||
       !saved.reviewerAssignments.some((entry) => entry.reviewerEmployeeId === reviewer &&
         (!assigned || entry.employeeId === assigned.employeeId)))) return null;
-    if (filter.status && (filter.status !== saved.status ||
-      !saved.reviewerAssignments.some((entry) => entry.reviewerEmployeeId === filter['reviewerAssignments.reviewerEmployeeId']))) return null;
     return copy(saved);
   } }));
   t.mock.method(Cycle, 'findOneAndUpdate', (filter, change) => ({ lean: async () => {

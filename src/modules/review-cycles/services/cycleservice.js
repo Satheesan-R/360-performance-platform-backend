@@ -300,4 +300,3 @@ module.exports = {
   createCycle, listCycles, getCycle, updateCycle, publishCycle, listAssignedCycles, getAssignedReview,
   getReviewResponse, saveReviewResponse, cycleResults,
 };
-module.exports = { createCycle, listCycles, getCycle, updateCycle, publishCycle, listAssignedCycles, getAssignedReview };
