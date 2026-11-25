@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const { env } = require('./config/env');
 const authRoutes = require('./modules/auth/routes/authroutes');
+const { authenticate } = require('./middleware/auth');
+const { profile } = require('./modules/settings/controllers/settingscontroller');
 const employeeRoutes = require('./modules/employees/routes/employeeroutes');
 const organizationRoutes = require('./modules/organization/routes/organizationroutes');
 const departmentRoutes = require('./modules/organization/routes/departmentroutes');
@@ -22,6 +24,7 @@ app.use(express.json({ limit: '20kb'}
    ));
 
 app.use('/api/auth', authRoutes);
+app.get('/api/settings/profile', authenticate, profile);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/organization', organizationRoutes);
 app.use('/api/departments', departmentRoutes);
