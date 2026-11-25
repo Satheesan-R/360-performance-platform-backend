@@ -1,0 +1,14 @@
+const router = require('express').Router();
+const controller = require('../controllers/supportcontroller');
+router.use(require('../../../middleware/auth').authenticate);
+router.get('/context', controller.context);
+router.get('/officers', controller.officers);
+router.put('/memberships', controller.membership);
+router.get('/tickets', controller.list);
+router.post('/tickets', controller.create);
+router.get('/tickets/:id', controller.get);
+router.post('/tickets/:id/messages', controller.message);
+router.patch('/tickets/:id/assignment', controller.assign);
+router.patch('/tickets/:id/status', controller.status);
+router.post('/tickets/:id/reopen', controller.reopen);
+module.exports = router;

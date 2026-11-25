@@ -26,7 +26,7 @@ async function login(email, password) {
   if (user.status !== 'active') throw new Error('Please activate your account first');
   user.lastLoginAt = new Date();
   await user.save();
-  const token = jwt.sign({ id: user._id, role: user.role }, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
+  const token = jwt.sign({ id: user._id, role: user.role, sessionVersion: user.sessionVersion || 0 }, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
   return { token, user };
 }
 
